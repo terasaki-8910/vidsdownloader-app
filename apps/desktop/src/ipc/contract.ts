@@ -226,6 +226,7 @@ export interface Site {
   accounts: Account[];
   selectedAccountId: number | null;
   adBlock: boolean;
+  flowCount: number;
 }
 
 export interface BrowserState {
@@ -234,6 +235,49 @@ export interface BrowserState {
   mode: "browse" | "login";
   siteId: number | null;
   accountId: number | null;
+}
+
+export interface FlowStep {
+  pattern: string;
+  label: string;
+  url: string;
+  matchCount: number;
+  /** Zero-based position in the nearest row containing at least two matching elements. */
+  rowIndex: number;
+  rowCount: number;
+  /** Zero-based position among every element matching the pattern on the page. */
+  pageIndex: number;
+}
+
+export interface Flow {
+  startUrl: string;
+  steps: FlowStep[];
+  media: string | null;
+}
+
+export type FlowScope = "this" | "restOfRow" | "allOfKind";
+
+export interface SavedFlow {
+  id: number;
+  siteId: number | null;
+  host: string;
+  name: string;
+  startUrl: string;
+  steps: FlowStep[];
+  scopes: FlowScope[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface FlowReplayItem {
+  replayLabel: string;
+  media: string | null;
+}
+
+export interface FlowReplayResult {
+  results: FlowReplayItem[];
+  capped: boolean;
+  total: number;
 }
 
 export interface CollectGroup {
@@ -548,6 +592,22 @@ export interface Commands {
     args: { name: string; matchPattern: string };
     result: number;
   };
+  flow_record_start: { args: Record<string, never>; result: null };
+  flow_record_stop: { args: Record<string, never>; result: Flow };
+  flow_save: {
+    args: { name: string; flow: Flow & { scopes: FlowScope[] } };
+    result: SavedFlow;
+  };
+  flow_list: { args: { url: string }; result: SavedFlow[] };
+  /** Settings groups every host associated with one registered site. */
+  flow_list_for_site: { args: { siteId: number }; result: SavedFlow[] };
+  flow_rename: { args: { id: number; name: string }; result: null };
+  flow_delete: { args: { id: number }; result: null };
+  flow_replay: {
+    args: { flow: Flow; scopes: FlowScope[] };
+    result: FlowReplayResult;
+  };
+  flow_replay_cancel: { args: Record<string, never>; result: null };
   /** Every source in id order. tzOffsetSeconds as in enqueue_urls (automatic checks use the newest one passed). */
   sources_list: { args: { tzOffsetSeconds: number }; result: SourceRow[] };
   /**
@@ -595,6 +655,8 @@ export interface Events {
   /** The in-app browser changed page, loading state or mode. */
   "browser-state": BrowserState;
   "collect-state": CollectState;
+  "flow-record-progress": { steps: number };
+  "flow-progress": { done: number; total: number };
   /** The site list changed (sites, accounts or their login status). */
   "sites-updated": Site[];
   /** A job was added or changed; the payload is the whole row. */

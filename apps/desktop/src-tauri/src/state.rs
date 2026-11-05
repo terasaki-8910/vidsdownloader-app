@@ -15,7 +15,7 @@ use vids_core::tools::{Tool, ToolManager};
 use vids_core::types::{ErrorCategory, JobPhase};
 
 use crate::models::Settings;
-use crate::{browser, collector, notify, page_media, sites, sources};
+use crate::{browser, collector, flow, notify, page_media, sites, sources};
 
 #[cfg(target_os = "windows")]
 pub const TARGET_OS: TargetOs = TargetOs::Windows;
@@ -457,6 +457,7 @@ pub struct AppState {
     pub installation_running: Arc<AtomicBool>,
     pub browser: Arc<browser::BrowserManager>,
     pub collector: Arc<collector::CollectorManager>,
+    pub flow: Arc<flow::FlowManager>,
     pub sources: Arc<sources::SourceManager>,
     pub notifier: notify::Notifier,
 }

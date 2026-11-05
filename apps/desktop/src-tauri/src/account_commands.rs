@@ -307,7 +307,7 @@ pub async fn login_cancel(app: AppHandle, state: State<'_, AppState>) -> Result<
     state.browser.start_page(&app)
 }
 
-fn emit_sites(app: &AppHandle, state: &State<'_, AppState>) -> Result<(), String> {
+pub(crate) fn emit_sites(app: &AppHandle, state: &State<'_, AppState>) -> Result<(), String> {
     let sites = sites::list_sites(&lock_recover(&state.store))?;
     app.emit("sites-updated", sites)
         .map_err(|error| error.to_string())

@@ -47,10 +47,18 @@ pub struct Site {
     pub accounts: Vec<Account>,
     pub selected_account_id: Option<i64>,
     pub ad_block: bool,
+    pub flow_count: usize,
 }
 
 impl Site {
     pub(crate) fn from_stored(profile: SiteProfile) -> Result<Self, String> {
+        Self::from_stored_with_flow_count(profile, 0)
+    }
+
+    fn from_stored_with_flow_count(
+        profile: SiteProfile,
+        flow_count: usize,
+    ) -> Result<Self, String> {
         let data: SiteProfileData = serde_json::from_value(profile.profile_json)
             .map_err(|error| format!("invalid site profile '{}': {error}", profile.name))?;
         Ok(Self {
@@ -62,6 +70,7 @@ impl Site {
             accounts: data.accounts,
             selected_account_id: data.selected_account_id,
             ad_block: data.ad_block,
+            flow_count,
         })
     }
 
@@ -149,7 +158,12 @@ pub fn list_sites(store: &Store) -> Result<Vec<Site>, String> {
         .list_site_profiles()
         .map_err(|error| error.to_string())?
         .into_iter()
-        .map(Site::from_stored)
+        .map(|profile| {
+            let flow_count = store
+                .count_flows_by_site(profile.id)
+                .map_err(|error| error.to_string())?;
+            Site::from_stored_with_flow_count(profile, flow_count)
+        })
         .collect()
 }
 
@@ -250,6 +264,7 @@ pub fn add_site(store: &Store, url: &str, now: i64) -> Result<Site, String> {
         accounts: data.accounts,
         selected_account_id: data.selected_account_id,
         ad_block: data.ad_block,
+        flow_count: 0,
     })
 }
 
@@ -474,6 +489,7 @@ mod tests {
             accounts: Vec::new(),
             selected_account_id: None,
             ad_block: true,
+            flow_count: 0,
         }];
         assert_eq!(
             site_for_url_in(&sites, "https://youtube.com/watch"),

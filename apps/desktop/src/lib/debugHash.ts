@@ -33,6 +33,8 @@ export interface DebugHashState {
   commentsConflict?: boolean;
   /** Mock backend only: open a page and start collecting links or page images. */
   mockCollect?: "links" | "images" | "played";
+  /** Mock backend only: show the recorded-flow prototype with a two-step flow. */
+  mockFlow?: boolean;
   /** Mock backend only: start in login mode for the site with this domain. */
   mockLogin?: string;
   /** Mock backend only: YouTube gets a second account. */
@@ -136,6 +138,7 @@ export function readDebugHash(): DebugHashState {
   if (mockCollect === "1") state.mockCollect = "links";
   else if (mockCollect === "images") state.mockCollect = "images";
   else if (mockCollect === "played") state.mockCollect = "played";
+  if (params.get("mockFlow") === "1") state.mockFlow = true;
   const mockLogin = params.get("mockLogin");
   if (mockLogin) state.mockLogin = mockLogin;
   if (params.get("mockMulti") === "1") state.mockMulti = true;

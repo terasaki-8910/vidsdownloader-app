@@ -372,6 +372,30 @@ export interface Translations {
     addPage: string;
     pageAdded: string;
     collect: string;
+    flowRecord: string;
+    flowRecordStop: string;
+    flowRecording: (steps: number) => string;
+    savedFlows: string;
+    savedFlowSteps: (steps: number) => string;
+    useSavedFlow: string;
+    learnedFlow: string;
+    flowStep: (label: string) => string;
+    flowScopeThis: string;
+    flowScopeRow: (count: number) => string;
+    flowScopeAll: (count: number) => string;
+    flowReplay: string;
+    flowReplaying: string;
+    flowProgress: (done: number, total: number) => string;
+    flowCapped: string;
+    flowResults: (count: number) => string;
+    flowNoMedia: string;
+    flowName: string;
+    flowSave: string;
+    flowSaved: string;
+    flowStored: string;
+    flowNameEmpty: string;
+    flowMismatch: (label: string) => string;
+    flowRecordAgain: string;
     foundLabel: string;
     all: string;
     selectedOfTotal: (selected: number, total: number) => string;
@@ -446,6 +470,15 @@ export interface Translations {
     deleteSiteMenu: string;
     deleteConfirmTitle: (name: string) => string;
     deleteConfirmBody: (accounts: number) => string;
+    flowCount: (count: number) => string;
+    viewFlows: string;
+    flowsTitle: (site: string) => string;
+    flowSteps: (count: number) => string;
+    renameFlow: string;
+    flowNameLabel: string;
+    flowNameEmpty: string;
+    deleteFlowTitle: (name: string) => string;
+    deleteFlowBody: string;
   };
 
   /** The box in a newly added site's row: what yt-dlp makes of the URL that was added. */

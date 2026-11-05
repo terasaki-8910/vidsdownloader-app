@@ -82,6 +82,19 @@
   color: var(--accent-ink);
 }
 
+.flowRecordControl {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.flowRecordControl > span {
+  color: var(--accent-ink);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .primary,
 .secondary,
 .ghost {
@@ -424,6 +437,171 @@
 
 .collectError {
   color: var(--danger);
+}
+
+.savedFlowSection,
+.flowSection,
+.flowResultSection {
+  flex: none;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.flowSection {
+  max-height: 50%;
+  overflow: auto;
+}
+
+.savedFlowSection h3,
+.flowSection h3,
+.flowResultSection h3 {
+  margin: 0 0 10px;
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 650;
+}
+
+.savedFlowList {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.savedFlowList li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.savedFlowList li > span {
+  display: grid;
+  min-width: 0;
+}
+
+.savedFlowList strong {
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.savedFlowList small {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.flowSteps {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding-left: 22px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.flowStepLine {
+  display: grid;
+  gap: 6px;
+}
+
+.flowStepLine select {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  padding: 0 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.flowMedia {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flowSaveLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.flowSaveLine input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12.5px;
+}
+
+.flowSaveLine input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+.flowSaveLine input:read-only,
+.flowSaveLine > span {
+  color: var(--muted);
+}
+
+.flowSaveLine > span {
+  flex: none;
+  font-size: 12px;
+}
+
+.flowMismatch {
+  display: grid;
+  gap: 5px;
+  margin-top: 10px;
+  color: var(--danger);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.flowMismatch .textButton {
+  justify-self: start;
+}
+
+.flowReplayLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.flowReplayLine .secondary {
+  min-width: 0;
+  padding: 0 10px;
+}
+
+.flowResultSection {
+  padding: 12px 0 4px;
+}
+
+.flowResultSection h3 {
+  padding: 0 18px;
+}
+
+.flowFoundList {
+  flex: none;
+  max-height: 220px;
 }
 
 .foundList {

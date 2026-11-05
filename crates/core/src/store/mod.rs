@@ -19,6 +19,7 @@
 //! module only persists it, it does not interpret it.
 
 mod error;
+mod flows;
 mod jobs;
 mod known_items;
 mod library;
@@ -34,6 +35,7 @@ use std::time::Duration;
 use rusqlite::Connection;
 
 pub use error::StoreError;
+pub use flows::{Flow, NewFlow};
 pub use jobs::{Job, JobFilter, NewJob};
 pub use library::{ErasedItem, LibraryItem, LibraryQuery, NewLibraryItem};
 pub use rules::Rule;

@@ -107,6 +107,25 @@ const SCHEMA_V4: &str = "
     ALTER TABLE sources ADD COLUMN last_result_json TEXT;
 ";
 
+/// Browser click flows are looked up by the exact host they were recorded on.
+/// `site_id` is only for grouping them under registered sites in Settings; a
+/// flow remains available by host if that site is removed.
+const SCHEMA_V5: &str = "
+    CREATE TABLE flows (
+        id INTEGER PRIMARY KEY,
+        site_id INTEGER REFERENCES site_profiles(id) ON DELETE SET NULL,
+        host TEXT NOT NULL,
+        name TEXT NOT NULL,
+        start_url TEXT NOT NULL,
+        steps_json TEXT NOT NULL,
+        scopes_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX idx_flows_host ON flows(host);
+    CREATE INDEX idx_flows_site_id ON flows(site_id);
+";
+
 /// Every schema version in order, paired with the SQL that creates it from the
 /// previous one. Add a new `(version, sql)` entry here for the next migration;
 /// never change an entry that has already shipped.
@@ -115,6 +134,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (2, SCHEMA_V2),
     (3, SCHEMA_V3),
     (4, SCHEMA_V4),
+    (5, SCHEMA_V5),
 ];
 
 /// Apply any migrations this connection is missing, each inside its own

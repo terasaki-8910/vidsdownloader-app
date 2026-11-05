@@ -1547,6 +1547,7 @@ mod tests {
             accounts,
             selected_account_id,
             ad_block: true,
+            flow_count: 0,
         }
     }
 

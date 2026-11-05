@@ -4,6 +4,7 @@ mod browser;
 mod collector;
 mod commands;
 mod comments_commands;
+mod flow;
 mod library_commands;
 mod login_import;
 mod media;
@@ -44,6 +45,10 @@ use crate::commands::{
 };
 use crate::comments_commands::{
     comments_extract, comments_resolve, file_extract_comments, pick_video_file,
+};
+use crate::flow::{
+    flow_delete, flow_list, flow_list_for_site, flow_record_start, flow_record_stop, flow_rename,
+    flow_replay, flow_replay_cancel, flow_save,
 };
 use crate::library_commands::{
     library_forget, library_open, library_open_with, library_rename, library_trash,
@@ -96,6 +101,10 @@ fn initialize(app: &mut tauri::App<tauri::Wry>) -> Result<(), Box<dyn Error>> {
         Arc::clone(&browser),
         Arc::clone(&store),
     ));
+    let flow = Arc::new(flow::FlowManager::new(
+        Arc::clone(&browser),
+        Arc::clone(&store),
+    ));
     let page_media: Arc<dyn page_media::PageMediaFinder> =
         Arc::new(page_media::BrowserPageMediaFinder::new(
             app.handle().clone(),
@@ -135,6 +144,7 @@ fn initialize(app: &mut tauri::App<tauri::Wry>) -> Result<(), Box<dyn Error>> {
         installation_running: Arc::new(AtomicBool::new(false)),
         browser,
         collector,
+        flow,
         sources: Arc::clone(&sources),
         notifier: notifier.clone(),
     });
@@ -221,6 +231,15 @@ pub fn run() {
             collect_close,
             collect_reveal,
             collect_save_rule,
+            flow_record_start,
+            flow_record_stop,
+            flow_save,
+            flow_list,
+            flow_list_for_site,
+            flow_rename,
+            flow_delete,
+            flow_replay,
+            flow_replay_cancel,
             sources_list,
             source_preview,
             source_preview_collect,

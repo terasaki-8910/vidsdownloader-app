@@ -1,0 +1,12 @@
+[
+  {
+    "step": {
+      "pattern": "section div.row div.card.stable",
+      "label": "Card 2",
+      "matchCount": 10,
+      "rowIndex": 1,
+      "rowCount": 5,
+      "pageIndex": 1
+    }
+  }
+]

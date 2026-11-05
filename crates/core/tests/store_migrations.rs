@@ -126,7 +126,7 @@ fn version_one_database_gains_queue_persistence_columns() {
     assert_eq!(
         conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
             .unwrap(),
-        4
+        5
     );
 }
 
@@ -200,7 +200,7 @@ fn version_two_database_gains_the_already_saved_column() {
     assert_eq!(
         conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
             .unwrap(),
-        4
+        5
     );
 }
 
@@ -251,6 +251,6 @@ fn version_three_database_gains_the_source_result_column() {
     assert_eq!(
         conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
             .unwrap(),
-        4
+        5
     );
 }

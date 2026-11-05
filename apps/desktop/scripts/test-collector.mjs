@@ -26,6 +26,7 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const fixtures = join(root, "collector-fixtures");
 const collectorScript = join(root, "src-tauri", "src", "collector.js");
+const flowRecorderScript = join(root, "src-tauri", "src", "flow_recorder.js");
 
 function findBrowser() {
   const candidates = [
@@ -44,6 +45,7 @@ function serve() {
     const path = new URL(request.url, "http://localhost").pathname;
     let file = null;
     if (path === "/collector.js") file = collectorScript;
+    else if (path === "/flow-recorder.js") file = flowRecorderScript;
     else if (/^\/[\w.-]+\.(html|js)$/.test(path)) file = join(fixtures, path.slice(1));
     if (!file || !existsSync(file)) {
       response.writeHead(404).end();
@@ -101,6 +103,14 @@ function sameList(actual, expected) {
 
 function check(result, expected) {
   const problems = [];
+  if (expected.step) {
+    for (const [field, wanted] of Object.entries(expected.step)) {
+      if (result[field] !== wanted) {
+        problems.push(`${field}: expected ${JSON.stringify(wanted)}, actual ${JSON.stringify(result[field])}`);
+      }
+    }
+    return problems;
+  }
   const items = result.items ?? [];
   const compare = (label, actual, wanted) => {
     if (wanted !== undefined && !sameList(actual, wanted)) {

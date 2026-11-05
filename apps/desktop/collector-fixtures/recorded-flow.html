@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Recorded flow fixture</title>
+  <style>
+    .row { display: flex; gap: 12px; }
+    .card { width: 180px; height: 100px; cursor: pointer; }
+    dialog { width: 400px; }
+  </style>
+</head>
+<body>
+  <main class="catalog">
+    <section><h2>New</h2><div class="row">
+      <div class="card stable"><strong>Card 1</strong></div>
+      <div class="card stable generated9x"><strong>Card 2</strong></div>
+      <div class="card stable"><strong>Card 3</strong></div>
+      <div class="card stable"><strong>Card 4</strong></div>
+      <div class="card stable"><strong>Card 5</strong></div>
+    </div></section>
+    <section><h2>Popular</h2><div class="row">
+      <div class="card stable"><strong>Card 6</strong></div>
+      <div class="card stable"><strong>Card 7</strong></div>
+      <div class="card stable"><strong>Card 8</strong></div>
+      <div class="card stable"><strong>Card 9</strong></div>
+      <div class="card stable"><strong>Card 10</strong></div>
+    </div></section>
+  </main>
+  <dialog><button class="play">Play</button></dialog>
+  <script src="/flow-recorder.js"></script>
+  <script src="/run-flow.js"></script>
+</body>
+</html>

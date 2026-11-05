@@ -2,7 +2,7 @@ import { ChevronDown, Trash2 } from "lucide-react";
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent, type MouseEvent } from "react";
 import { useFirefoxImport } from "../hooks/useFirefoxImport";
 import { ipc } from "../ipc";
-import type { Account, LoginMethod, Site } from "../ipc/contract";
+import type { Account, LoginMethod, SavedFlow, Site } from "../ipc/contract";
 import { useT } from "../i18n/I18nContext";
 import { nextFrame } from "../lib/frame";
 import { accountStatus, selectedAccount } from "../lib/sites";
@@ -146,6 +146,14 @@ function SiteRow({
   const deleteMenuRef = useRef<RowMenuHandle>(null);
   const [pending, setPending] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [showFlows, setShowFlows] = useState(false);
+  const [flows, setFlows] = useState<SavedFlow[]>([]);
+  const [flowsLoading, setFlowsLoading] = useState(false);
+  const [flowBusyId, setFlowBusyId] = useState<number | null>(null);
+  const [renamingFlowId, setRenamingFlowId] = useState<number | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [confirmingFlowDelete, setConfirmingFlowDelete] = useState<SavedFlow | null>(null);
+  const [flowError, setFlowError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { siteReports } = useSites();
 
@@ -227,13 +235,73 @@ function SiteRow({
     deleteCellRef.current?.querySelector("button")?.focus();
   }
 
+  async function openFlows() {
+    setShowFlows(true);
+    setFlowsLoading(true);
+    setFlowError(null);
+    try {
+      setFlows(await ipc.call("flow_list_for_site", { siteId: site.id }));
+    } catch (e) {
+      setFlowError(t.sites.failed(errorMessage(e)));
+    } finally {
+      setFlowsLoading(false);
+    }
+  }
+
+  function startFlowRename(flow: SavedFlow) {
+    setRenamingFlowId(flow.id);
+    setRenameDraft(flow.name);
+    setFlowError(null);
+  }
+
+  async function renameFlow(flow: SavedFlow) {
+    const name = renameDraft.trim();
+    if (!name) {
+      setFlowError(t.sites.flowNameEmpty);
+      return;
+    }
+    setFlowBusyId(flow.id);
+    setFlowError(null);
+    try {
+      await ipc.call("flow_rename", { id: flow.id, name });
+      setFlows((previous) =>
+        previous.map((item) => (item.id === flow.id ? { ...item, name, updatedAt: Math.floor(Date.now() / 1000) } : item)),
+      );
+      setRenamingFlowId(null);
+    } catch (e) {
+      setFlowError(t.sites.failed(errorMessage(e)));
+    } finally {
+      setFlowBusyId(null);
+    }
+  }
+
+  async function deleteFlow() {
+    const flow = confirmingFlowDelete;
+    if (!flow) return;
+    setConfirmingFlowDelete(null);
+    setFlowBusyId(flow.id);
+    setFlowError(null);
+    try {
+      await ipc.call("flow_delete", { id: flow.id });
+      setFlows((previous) => previous.filter((item) => item.id !== flow.id));
+    } catch (e) {
+      setFlowError(t.sites.failed(errorMessage(e)));
+    } finally {
+      setFlowBusyId(null);
+    }
+  }
+
   const selectedStatus = selected ? accountStatus(t, selected) : null;
-  const deleteEntries: MenuEntry[] = [
-    { kind: "item", label: t.sites.deleteSiteMenu, danger: true, onSelect: () => setConfirmingDelete(true) },
-  ];
+  const deleteEntries: MenuEntry[] = [];
+  if (site.flowCount > 0) {
+    deleteEntries.push({ kind: "item", label: t.sites.viewFlows, onSelect: () => void openFlows() });
+  }
+  if (!site.builtin) {
+    deleteEntries.push({ kind: "item", label: t.sites.deleteSiteMenu, danger: true, onSelect: () => setConfirmingDelete(true) });
+  }
 
   function openContextMenu(e: MouseEvent<HTMLLIElement>) {
-    if (site.builtin || pending) return;
+    if (deleteEntries.length === 0 || pending) return;
     // Form fields keep their own right-click; buttons have none in the app, so the row's menu
     // opens over them too (the trash icon included).
     if (e.target instanceof Element && e.target.closest("input, select, textarea")) return;
@@ -242,7 +310,7 @@ function SiteRow({
   }
 
   function openKeyboardMenu(e: KeyboardEvent<HTMLLIElement>) {
-    if (site.builtin || pending || (e.key !== "ContextMenu" && !(e.shiftKey && e.key === "F10"))) return;
+    if (deleteEntries.length === 0 || pending || (e.key !== "ContextMenu" && !(e.shiftKey && e.key === "F10"))) return;
     e.preventDefault();
     deleteMenuRef.current?.open();
   }
@@ -287,19 +355,20 @@ function SiteRow({
               <Trash2 size={16} aria-hidden />
             </IconButton>
           )}
-          {!site.builtin && (
+          {deleteEntries.length > 0 && (
             <RowMenu
               ref={deleteMenuRef}
               label={t.sites.deleteSite(site.name)}
               entries={deleteEntries}
               disabled={pending}
               anchorRef={deleteCellRef}
-              hideButton
+              hideButton={!site.builtin}
               onReturnFocus={() => deleteCellRef.current?.querySelector("button")?.focus()}
             />
           )}
         </div>
       </div>
+      {site.flowCount > 0 && <p className={styles.flowCount}>{t.sites.flowCount(site.flowCount)}</p>}
       {confirmingDelete && (
         <ConfirmDialog
           title={t.sites.deleteConfirmTitle(site.name)}
@@ -309,6 +378,91 @@ function SiteRow({
           onCancel={() => setConfirmingDelete(false)}
           onConfirm={() => void removeSite()}
         />
+      )}
+      {confirmingFlowDelete && (
+        <ConfirmDialog
+          title={t.sites.deleteFlowTitle(confirmingFlowDelete.name)}
+          body={t.sites.deleteFlowBody}
+          cancelLabel={t.common.dialogCancel}
+          confirmLabel={t.common.delete}
+          onCancel={() => setConfirmingFlowDelete(null)}
+          onConfirm={() => void deleteFlow()}
+        />
+      )}
+
+      {showFlows && (
+        <section className={styles.flowPanel} aria-label={t.sites.flowsTitle(site.name)}>
+          <div className={styles.flowPanelHead}>
+            <h3>{t.sites.flowsTitle(site.name)}</h3>
+            <button type="button" className={styles.link} onClick={() => setShowFlows(false)}>
+              {t.common.close}
+            </button>
+          </div>
+          {!flowsLoading && (
+            <ul className={styles.flowList}>
+              {flows.map((flow) => (
+                <li key={flow.id}>
+                  <div className={styles.flowName}>
+                    {renamingFlowId === flow.id ? (
+                      <input
+                        autoFocus
+                        type="text"
+                        maxLength={80}
+                        value={renameDraft}
+                        readOnly={flowBusyId === flow.id}
+                        aria-label={t.sites.flowNameLabel}
+                        aria-invalid={flowError !== null || undefined}
+                        onChange={(event) => {
+                          setRenameDraft(event.target.value);
+                          setFlowError(null);
+                        }}
+                        onBlur={() => {
+                          if (flowBusyId !== flow.id) setRenamingFlowId(null);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void renameFlow(flow);
+                          } else if (event.key === "Escape") {
+                            event.preventDefault();
+                            if (flowBusyId !== flow.id) setRenamingFlowId(null);
+                          }
+                        }}
+                      />
+                    ) : (
+                      <span>{flow.name}</span>
+                    )}
+                    <small>{t.sites.flowSteps(flow.steps.length)}</small>
+                  </div>
+                  <div className={styles.flowActions}>
+                    <button
+                      type="button"
+                      className={styles.link}
+                      disabled={flowBusyId !== null}
+                      onClick={() => startFlowRename(flow)}
+                    >
+                      {t.sites.renameFlow}
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.link}
+                      disabled={flowBusyId !== null}
+                      onClick={() => setConfirmingFlowDelete(flow)}
+                    >
+                      {t.common.delete}
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          {flowError && (
+            <p role="alert" className={styles.error}>
+              {flowError}
+            </p>
+          )}
+        </section>
       )}
 
       {report && (

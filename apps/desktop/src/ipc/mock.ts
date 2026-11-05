@@ -24,12 +24,15 @@ import type {
   Events,
   FirefoxImportResult,
   FirefoxProfilesInfo,
+  Flow,
+  FlowReplayResult,
   JobDetails,
   JobRow,
   JobState,
   LibraryRow,
   LoginMethod,
   Preset,
+  SavedFlow,
   Settings,
   Site,
   SiteProbeReport,
@@ -80,6 +83,8 @@ const listeners: { [K in keyof Events]: Set<(payload: Events[K]) => void> } = {
   "tools-progress": new Set(),
   "browser-state": new Set(),
   "collect-state": new Set(),
+  "flow-record-progress": new Set(),
+  "flow-progress": new Set(),
   "sites-updated": new Set(),
   "job-removed": new Set(),
   "library-updated": new Set(),
@@ -868,6 +873,7 @@ function newSite(
     adBlock: true,
     accounts: [account],
     selectedAccountId: account.id,
+    flowCount: 0,
   };
 }
 
@@ -894,6 +900,49 @@ const sites: Site[] = [
 
 const IDLE_BROWSER: BrowserState = { url: null, loading: false, mode: "browse", siteId: null, accountId: null };
 let browserState: BrowserState = { ...IDLE_BROWSER };
+
+const MOCK_FLOW_URL = "http://127.0.0.1:18766/";
+const MOCK_FLOW: Flow = {
+  startUrl: MOCK_FLOW_URL,
+  steps: [
+    {
+      pattern: "section div.row div.card",
+      label: "動画 2",
+      url: MOCK_FLOW_URL,
+      matchCount: 10,
+      rowIndex: 1,
+      rowCount: 5,
+      pageIndex: 1,
+    },
+    {
+      pattern: "dialog div.modal button.play",
+      label: "再生",
+      url: MOCK_FLOW_URL,
+      matchCount: 1,
+      rowIndex: 0,
+      rowCount: 1,
+      pageIndex: 0,
+    },
+  ],
+  media: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8?card=2",
+};
+
+let nextFlowId = 2;
+let savedFlows: SavedFlow[] = readDebugHash().mockFlow
+  ? [
+      {
+        id: 1,
+        siteId: null,
+        host: "127.0.0.1",
+        name: "再生（127.0.0.1）",
+        startUrl: MOCK_FLOW.startUrl,
+        steps: structuredClone(MOCK_FLOW.steps),
+        scopes: ["restOfRow", "this"],
+        createdAt: nowSeconds() - 3600,
+        updatedAt: nowSeconds() - 3600,
+      },
+    ]
+  : [];
 
 const SAMPLE_COLLECT_ITEMS: CollectItem[] = [
   {
@@ -1169,6 +1218,14 @@ function parseHttpUrl(url: string): URL {
       mode: "browse",
       siteId,
       accountId: site?.selectedAccountId ?? null,
+    };
+  } else if (hash.mockFlow) {
+    browserState = {
+      url: MOCK_FLOW_URL,
+      loading: false,
+      mode: "browse",
+      siteId: null,
+      accountId: null,
     };
   } else if (hash.mockCollect) {
     const url = hash.mockCollect === "images"
@@ -2109,6 +2166,86 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
       collectState.ruleId = nextRuleId++;
       emitCollect();
       return collectState.ruleId;
+
+    case "flow_record_start":
+      emit("flow-record-progress", { steps: 0 });
+      return null;
+
+    case "flow_record_stop":
+      return structuredClone(MOCK_FLOW);
+
+    case "flow_save": {
+      const { name, flow } = args as Commands["flow_save"]["args"];
+      const parsed = parseHttpUrl(flow.startUrl);
+      const siteId = siteIdForUrl(flow.startUrl);
+      const now = nowSeconds();
+      const saved: SavedFlow = {
+        id: nextFlowId++,
+        siteId,
+        host: parsed.hostname.toLowerCase(),
+        name: name.trim(),
+        startUrl: flow.startUrl,
+        steps: structuredClone(flow.steps),
+        scopes: [...flow.scopes],
+        createdAt: now,
+        updatedAt: now,
+      };
+      savedFlows.unshift(saved);
+      if (siteId !== null) siteById(siteId).flowCount += 1;
+      emitSites();
+      return structuredClone(saved);
+    }
+
+    case "flow_list": {
+      const host = parseHttpUrl((args as Commands["flow_list"]["args"]).url).hostname.toLowerCase();
+      return structuredClone(savedFlows.filter((flow) => flow.host === host));
+    }
+
+    case "flow_list_for_site": {
+      const { siteId } = args as Commands["flow_list_for_site"]["args"];
+      return structuredClone(savedFlows.filter((flow) => flow.siteId === siteId));
+    }
+
+    case "flow_rename": {
+      const { id, name } = args as Commands["flow_rename"]["args"];
+      const flow = savedFlows.find((item) => item.id === id);
+      if (!flow) throw new Error(`flow ${id} was not found`);
+      flow.name = name.trim();
+      flow.updatedAt = nowSeconds();
+      return null;
+    }
+
+    case "flow_delete": {
+      const { id } = args as Commands["flow_delete"]["args"];
+      const index = savedFlows.findIndex((flow) => flow.id === id);
+      if (index >= 0) {
+        const [deleted] = savedFlows.splice(index, 1);
+        if (deleted.siteId !== null) siteById(deleted.siteId).flowCount -= 1;
+        emitSites();
+      }
+      return null;
+    }
+
+    case "flow_replay": {
+      const { scopes } = args as Commands["flow_replay"]["args"];
+      const first = scopes[0] ?? "this";
+      const indexes = first === "restOfRow" ? [1, 2, 3, 4] : first === "allOfKind" ? [...Array(10).keys()] : [1];
+      const total = indexes.length;
+      emit("flow-progress", { done: 0, total });
+      const results: FlowReplayResult["results"] = [];
+      for (const [done, index] of indexes.entries()) {
+        await delay(250);
+        results.push({
+          replayLabel: `動画 ${index + 1}`,
+          media: `https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8?card=${index + 1}`,
+        });
+        emit("flow-progress", { done: done + 1, total });
+      }
+      return { results, capped: false, total };
+    }
+
+    case "flow_replay_cancel":
+      return null;
 
     case "sources_list":
       return structuredClone(sources);

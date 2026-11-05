@@ -8,12 +8,14 @@ import {
   LayoutList,
   LocateFixed,
   Lock,
+  MousePointerClick,
   Plus,
+  Repeat2,
   RotateCw,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
-import type { CollectState } from "../ipc/contract";
+import type { CollectState, Flow, FlowReplayItem, FlowScope, SavedFlow } from "../ipc/contract";
 import { ipc, usesMockIpc } from "../ipc";
 import { useT } from "../i18n/I18nContext";
 import { IMAGES_SHAPE, PLAYED_SHAPE } from "../lib/collect";
@@ -33,6 +35,7 @@ import styles from "./BrowserView.module.css";
 
 /** How long a loaded page is left alone before an asked-for 集める starts (pages that draw late). */
 const COLLECT_SETTLE_MS = 500;
+const FLOW_MISMATCH_PREFIX = "flow-step-mismatch:";
 
 interface BrowserViewProps {
   /** Opens Settings > Sites (to add a site). */
@@ -79,12 +82,37 @@ export function BrowserView({ onOpenSites }: BrowserViewProps) {
   const startCollectRef = useRef<() => Promise<void>>(async () => {});
   const debugCollectApplied = useRef(false);
   const allCheckboxRef = useRef<HTMLInputElement>(null);
+  const mockFlowApplied = useRef(false);
+  const [recording, setRecording] = useState(false);
+  const [recordedSteps, setRecordedSteps] = useState(0);
+  const [flow, setFlow] = useState<Flow | null>(null);
+  const [flowScopes, setFlowScopes] = useState<FlowScope[]>([]);
+  const [savedFlows, setSavedFlows] = useState<SavedFlow[]>([]);
+  const [savedFlowsDismissed, setSavedFlowsDismissed] = useState(false);
+  const [flowName, setFlowName] = useState("");
+  const [flowNameError, setFlowNameError] = useState<string | null>(null);
+  const [flowSaving, setFlowSaving] = useState(false);
+  const [flowSaved, setFlowSaved] = useState(false);
+  /** The steps came from a stored flow, so nothing was saved just now. */
+  const [flowFromStore, setFlowFromStore] = useState(false);
+  const [flowMismatch, setFlowMismatch] = useState<string | null>(null);
+  const [replaying, setReplaying] = useState(false);
+  const [flowProgress, setFlowProgress] = useState({ done: 0, total: 0 });
+  const [flowResults, setFlowResults] = useState<FlowReplayItem[]>([]);
+  const [flowCapped, setFlowCapped] = useState(false);
+  const [selectedFlowResults, setSelectedFlowResults] = useState<Record<number, boolean>>({});
 
   const isLogin = browser.mode === "login";
   const pageOpen = browser.url !== null;
   const site = sites.find((s) => s.id === browser.siteId) ?? null;
-  const selectedCount = collect?.items.filter((item) => selectedUrls[item.url] !== false).length ?? 0;
-  const allSelected = Boolean(collect?.items.length) && selectedCount === collect?.items.length;
+  const collectSelectedCount = collect?.items.filter((item) => selectedUrls[item.url] !== false).length ?? 0;
+  const flowSelectableCount = flowResults.filter((item) => item.media !== null).length;
+  const flowSelectedCount = flowResults.filter((item, index) => item.media && selectedFlowResults[index] !== false).length;
+  const selectedCount = collectSelectedCount + flowSelectedCount;
+  const selectableCount = (collect?.items.length ?? 0) + flowSelectableCount;
+  const allSelected = selectableCount > 0 && selectedCount === selectableCount;
+  const trayOpen = collect !== null || flow !== null || (savedFlows.length > 0 && !savedFlowsDismissed);
+  const trayItemCount = (collect?.items.length ?? 0) + flowResults.length;
   // The page's own images are saved directly (one job for the page), not queued as links.
   const imagesChosen = collect?.shape === IMAGES_SHAPE;
   const playedChosen = collect?.shape === PLAYED_SHAPE;
@@ -134,6 +162,31 @@ ${collect.shape}` : null;
   }, [browser.url]);
 
   useEffect(() => {
+    let current = true;
+    setSavedFlowsDismissed(false);
+    if (!browser.url || isLogin) {
+      setSavedFlows([]);
+      return () => {
+        current = false;
+      };
+    }
+    void ipc.call("flow_list", { url: browser.url }).then(
+      (flows) => {
+        if (current) setSavedFlows(flows);
+      },
+      (error) => {
+        if (current) {
+          setSavedFlows([]);
+          setLocalError(errorMessage(error));
+        }
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [browser.url, isLogin]);
+
+  useEffect(() => {
     if (!added) return;
     const timer = window.setTimeout(() => setAdded(false), 1600);
     return () => window.clearTimeout(timer);
@@ -148,6 +201,22 @@ ${collect.shape}` : null;
           for (const item of state.items) next[item.url] = previous[item.url] ?? true;
           return next;
         });
+      }),
+    [],
+  );
+
+  useEffect(
+    () =>
+      ipc.on("flow-record-progress", ({ steps }) => {
+        setRecordedSteps(steps);
+      }),
+    [],
+  );
+
+  useEffect(
+    () =>
+      ipc.on("flow-progress", (progress) => {
+        setFlowProgress(progress);
       }),
     [],
   );
@@ -173,6 +242,19 @@ ${collect.shape}` : null;
     debugCollectApplied.current = true;
     void startCollectRef.current();
   }, [browser.loading, browser.url]);
+
+  useEffect(() => {
+    const debug = readDebugHash();
+    if (!usesMockIpc || !debug.mockFlow || mockFlowApplied.current) return;
+    mockFlowApplied.current = true;
+    void ipc.call("flow_record_stop", {}).then((recorded) => {
+      setFlow(recorded);
+      setFlowScopes(recorded.steps.map((_, index) => (index === 0 ? "restOfRow" : "this")));
+      setFlowName(defaultFlowName(recorded));
+      setFlowSaved(false);
+      setFlowFromStore(false);
+    });
+  }, []);
   useEffect(() => {
     if (!collectRequest || isLogin || browser.loading || !browser.url) return undefined;
     if (siteHost(browser.url) !== siteHost(collectRequest.url)) return undefined;
@@ -234,6 +316,112 @@ ${collect.shape}` : null;
     }
   }
 
+  async function toggleFlowRecording() {
+    try {
+      if (recording) {
+        const recorded = await ipc.call("flow_record_stop", {});
+        setRecording(false);
+        setFlow(recorded);
+        setFlowScopes(recorded.steps.map(() => "this"));
+        setFlowName(defaultFlowName(recorded));
+        setFlowNameError(null);
+        setFlowSaved(false);
+        setFlowFromStore(false);
+        setFlowMismatch(null);
+      } else {
+        await startFlowRecording();
+      }
+      setLocalError(null);
+    } catch (error) {
+      setRecording(false);
+      setLocalError(errorMessage(error));
+    }
+  }
+
+  async function startFlowRecording() {
+    await ipc.call("flow_record_start", {});
+    setRecording(true);
+    setRecordedSteps(0);
+    setFlow(null);
+    setFlowScopes([]);
+    setFlowName("");
+    setFlowNameError(null);
+    setFlowSaved(false);
+    setFlowFromStore(false);
+    setFlowMismatch(null);
+    setFlowResults([]);
+    setFlowCapped(false);
+  }
+
+  function useSavedFlow(saved: SavedFlow) {
+    setFlow({ startUrl: saved.startUrl, steps: saved.steps, media: null });
+    setFlowScopes(saved.scopes);
+    setFlowName(saved.name);
+    setFlowNameError(null);
+    setFlowSaved(true);
+    setFlowFromStore(true);
+    setFlowMismatch(null);
+    setFlowResults([]);
+    setFlowCapped(false);
+    setFlowProgress({ done: 0, total: 0 });
+  }
+
+  async function saveFlow() {
+    if (!flow || flowSaving) return;
+    const name = flowName.trim();
+    if (!name) {
+      setFlowNameError(t.browser.flowNameEmpty);
+      return;
+    }
+    setFlowSaving(true);
+    setFlowNameError(null);
+    try {
+      const saved = await ipc.call("flow_save", { name, flow: { ...flow, scopes: flowScopes } });
+      setSavedFlows((previous) => [saved, ...previous.filter((item) => item.id !== saved.id)]);
+      setSavedFlowsDismissed(false);
+      setFlowName(saved.name);
+      setFlowSaved(true);
+      setFlowFromStore(false);
+      setLocalError(null);
+    } catch (error) {
+      setFlowNameError(errorMessage(error));
+    } finally {
+      setFlowSaving(false);
+    }
+  }
+
+  function setFlowScope(index: number, scope: FlowScope) {
+    setFlowScopes((previous) => previous.map((value, position) => (position === index ? scope : value)));
+  }
+
+  async function replayFlow() {
+    if (!flow || replaying) return;
+    setReplaying(true);
+    setFlowMismatch(null);
+    setFlowResults([]);
+    setFlowCapped(false);
+    setFlowProgress({ done: 0, total: replayCount(flow, flowScopes) });
+    try {
+      const result = await ipc.call("flow_replay", { flow, scopes: flowScopes });
+      setFlowResults(result.results);
+      setFlowCapped(result.capped);
+      setSelectedFlowResults(
+        Object.fromEntries(result.results.map((item, index) => [index, item.media !== null])),
+      );
+      setLocalError(null);
+    } catch (error) {
+      const message = errorMessage(error);
+      if (message.startsWith(FLOW_MISMATCH_PREFIX)) {
+        setFlowMismatch(message.slice(FLOW_MISMATCH_PREFIX.length));
+        setLocalError(null);
+      } else {
+        setLocalError(message);
+      }
+    } finally {
+      setReplaying(false);
+    }
+  }
+
   async function toggleCollect() {
     if (!collect) return;
     try {
@@ -270,7 +458,8 @@ ${collect.shape}` : null;
 
   async function closeCollect() {
     try {
-      await ipc.call("collect_close", {});
+      if (collect) await ipc.call("collect_close", {});
+      if (replaying) await ipc.call("flow_replay_cancel", {});
       setCollect(null);
       setSelectedUrls({});
       setGoneUrls({});
@@ -278,24 +467,32 @@ ${collect.shape}` : null;
       setShowXNotice(false);
       setSourceNotice(null);
       setReloadFindStatus(null);
+      setFlow(null);
+      setFlowScopes([]);
+      setFlowResults([]);
+      setFlowCapped(false);
+      setSelectedFlowResults({});
+      setSavedFlowsDismissed(true);
+      setFlowMismatch(null);
     } catch (error) {
       setLocalError(errorMessage(error));
     }
   }
 
   async function addCollected() {
-    if (!collect || !settings) return;
-    const chosen = collect.items.filter((item) => selectedUrls[item.url] !== false);
-    if (chosen.length === 0) return;
+    if (!settings) return;
+    const chosen = collect?.items.filter((item) => selectedUrls[item.url] !== false) ?? [];
+    const chosenFlow = flowResults.filter((item, index) => item.media && selectedFlowResults[index] !== false);
+    if (chosen.length === 0 && chosenFlow.length === 0) return;
     try {
-      if (playedChosen) {
+      if (collect && playedChosen) {
         const pageUrl = browser.url;
         if (!pageUrl) return;
         await enqueuePageMedia({
           items: chosen.map((item) => ({ mediaUrl: item.url, pageUrl, title: item.title })),
           preset: settings.defaultPreset,
         });
-      } else if (imagesChosen) {
+      } else if (collect && imagesChosen) {
         if (!browser.url) return;
         const page = collect.page;
         await enqueuePageImages({
@@ -306,11 +503,21 @@ ${collect.shape}` : null;
           id: page?.id ?? null,
           images: chosen.map((item, position) => ({ url: item.url, index: item.index ?? position + 1 })),
         });
-      } else {
+      } else if (chosen.length > 0) {
         await enqueue(
           chosen.map((item) => item.url),
           settings.defaultPreset,
         );
+      }
+      if (flow && chosenFlow.length > 0) {
+        await enqueuePageMedia({
+          items: chosenFlow.map((item) => ({
+            mediaUrl: item.media as string,
+            pageUrl: flow.startUrl,
+            title: item.replayLabel,
+          })),
+          preset: settings.defaultPreset,
+        });
       }
       setAdded(true);
       setLocalError(null);
@@ -320,10 +527,18 @@ ${collect.shape}` : null;
   }
 
   function setAllSelected(checked: boolean) {
-    if (!collect) return;
-    setSelectedUrls((previous) => {
+    if (collect) {
+      setSelectedUrls((previous) => {
+        const next = { ...previous };
+        for (const item of collect.items) next[item.url] = checked;
+        return next;
+      });
+    }
+    setSelectedFlowResults((previous) => {
       const next = { ...previous };
-      for (const item of collect.items) next[item.url] = checked;
+      flowResults.forEach((item, index) => {
+        if (item.media) next[index] = checked;
+      });
       return next;
     });
   }
@@ -424,6 +639,16 @@ ${collect.shape}` : null;
           </button>
         )}
 
+        {pageOpen && !isLogin && (
+          <div className={styles.flowRecordControl}>
+            <button type="button" className={styles.ghost} onClick={() => void toggleFlowRecording()}>
+              <MousePointerClick size={16} aria-hidden />
+              {recording ? t.browser.flowRecordStop : t.browser.flowRecord}
+            </button>
+            {recording && <span aria-live="polite">{t.browser.flowRecording(recordedSteps)}</span>}
+          </div>
+        )}
+
         {pageOpen && (
           <button
             type="button"
@@ -457,7 +682,7 @@ ${collect.shape}` : null;
         </div>
       )}
 
-      <div className={collect ? styles.collectWorkspace : styles.workspace}>
+      <div className={trayOpen ? styles.collectWorkspace : styles.workspace}>
         <div className={styles.stage} ref={stageRef}>
           {!pageOpen ? (
           <div className={styles.start} ref={startRef}>
@@ -506,24 +731,24 @@ ${collect.shape}` : null;
           )}
         </div>
 
-        {collect && (
-          <aside className={styles.tray} aria-label={`${t.browser.foundLabel} ${collect.items.length}`}>
+        {trayOpen && (
+          <aside className={styles.tray} aria-label={`${t.browser.foundLabel} ${trayItemCount}`}>
             <div className={styles.trayHead}>
               <div className={styles.trayTitleRow}>
                 <h2>
-                  {t.browser.foundLabel} <span>{collect.items.length}</span>
+                  {t.browser.foundLabel} <span>{trayItemCount}</span>
                 </h2>
                 <IconButton label={t.browser.closeCollect} size="sm" onClick={() => void closeCollect()}>
                   <X size={16} aria-hidden />
                 </IconButton>
               </div>
-              <div className={styles.progressLine}>
+              {collect && <div className={styles.progressLine}>
                 <span>{t.browser.scrollProgress(collect.scrolls, collect.maxScrolls)}</span>
                 <button type="button" className={styles.textButton} onClick={() => void toggleCollect()}>
                   {collect.running ? t.browser.collectStop : t.browser.collectResume}
                 </button>
-              </div>
-              {collect.groups.length > 0 && collect.shape && (
+              </div>}
+              {collect && collect.groups.length > 0 && collect.shape && (
                 <select
                   className={styles.groupSelect}
                   value={collect.shape}
@@ -541,7 +766,7 @@ ${collect.shape}` : null;
                   ))}
                 </select>
               )}
-              <div className={styles.reloadFindLine}>
+              {collect && <div className={styles.reloadFindLine}>
                 <button
                   type="button"
                   className={styles.textButton}
@@ -559,15 +784,122 @@ ${collect.shape}` : null;
                         : t.browser.reloadFoundNone}
                   </span>
                 )}
-              </div>
-              {collect.adsExcluded > 0 && (
+              </div>}
+              {collect && collect.adsExcluded > 0 && (
                 <p className={styles.adsNote}>{t.browser.adsExcluded(collect.adsExcluded)}</p>
               )}
               {showXNotice && <p className={styles.xNotice}>{t.browser.xCollectWarning}</p>}
-              {collect.error && <p className={styles.collectError}>{t.browser.collectFailed(collect.error)}</p>}
+              {collect?.error && <p className={styles.collectError}>{t.browser.collectFailed(collect.error)}</p>}
             </div>
 
-            {collect.items.length > 0 && (
+            {savedFlows.length > 0 && (
+              <section className={styles.savedFlowSection} aria-labelledby="saved-flows-title">
+                <h3 id="saved-flows-title">{t.browser.savedFlows}</h3>
+                <ul className={styles.savedFlowList}>
+                  {savedFlows.map((saved) => (
+                    <li key={saved.id}>
+                      <span>
+                        <strong>{saved.name}</strong>
+                        <small>{t.browser.savedFlowSteps(saved.steps.length)}</small>
+                      </span>
+                      <button type="button" className={styles.textButton} onClick={() => useSavedFlow(saved)}>
+                        {t.browser.useSavedFlow}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            {flow && (
+              <section className={styles.flowSection} aria-labelledby="recorded-flow-title">
+                <h3 id="recorded-flow-title">{t.browser.learnedFlow}</h3>
+                <ol className={styles.flowSteps}>
+                  {flow.steps.map((step, index) => {
+                    const restCount = Math.max(1, step.rowCount - step.rowIndex);
+                    return (
+                      <li key={`${step.pattern}-${index}`}>
+                        <div className={styles.flowStepLine}>
+                          <span>{t.browser.flowStep(step.label)}</span>
+                          {step.matchCount >= 2 && (
+                            <select
+                              value={flowScopes[index] ?? "this"}
+                              aria-label={`${index + 1}. ${t.browser.flowStep(step.label)}`}
+                              onChange={(event) => setFlowScope(index, event.target.value as FlowScope)}
+                            >
+                              <option value="this">{t.browser.flowScopeThis}</option>
+                              <option value="restOfRow">{t.browser.flowScopeRow(restCount)}</option>
+                              <option value="allOfKind">{t.browser.flowScopeAll(step.matchCount)}</option>
+                            </select>
+                          )}
+                        </div>
+                        {index + 1 === flow.steps.length && (flow.media || !flowFromStore) && (
+                          <p className={styles.flowMedia} title={flow.media ?? undefined}>
+                            {flow.media ? safeHost(flow.media) : t.browser.flowNoMedia}
+                          </p>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ol>
+                <div className={styles.flowSaveLine}>
+                  <input
+                    type="text"
+                    value={flowName}
+                    maxLength={80}
+                    readOnly={flowSaved}
+                    aria-label={t.browser.flowName}
+                    aria-invalid={flowNameError !== null || undefined}
+                    onChange={(event) => {
+                      setFlowName(event.target.value);
+                      setFlowNameError(null);
+                    }}
+                  />
+                  {flowSaved ? (
+                    <span role="status">{flowFromStore ? t.browser.flowStored : t.browser.flowSaved}</span>
+                  ) : (
+                    <button
+                      type="button"
+                      className={styles.textButton}
+                      disabled={flowSaving}
+                      onClick={() => void saveFlow()}
+                    >
+                      {t.browser.flowSave}
+                    </button>
+                  )}
+                </div>
+                {flowNameError && (
+                  <p role="alert" className={styles.collectError}>
+                    {flowNameError}
+                  </p>
+                )}
+                <div className={styles.flowReplayLine}>
+                  <button
+                    type="button"
+                    className={styles.secondary}
+                    disabled={replaying || flow.steps.length === 0}
+                    onClick={() => void replayFlow()}
+                  >
+                    <Repeat2 size={16} aria-hidden />
+                    {replaying ? t.browser.flowReplaying : t.browser.flowReplay}
+                  </button>
+                  {(replaying || flowProgress.total > 0) && (
+                    <span aria-live="polite">{t.browser.flowProgress(flowProgress.done, flowProgress.total)}</span>
+                  )}
+                </div>
+                {flowMismatch && (
+                  <div className={styles.flowMismatch} role="alert">
+                    <span>{t.browser.flowMismatch(flowMismatch)}</span>
+                    <button type="button" className={styles.textButton} onClick={() => void toggleFlowRecording()}>
+                      {t.browser.flowRecordAgain}
+                    </button>
+                  </div>
+                )}
+                {flowCapped && <p className={styles.adsNote}>{t.browser.flowCapped}</p>}
+              </section>
+            )}
+
+            {selectableCount > 0 && (
               <label className={styles.allRow}>
                 <input
                   ref={allCheckboxRef}
@@ -576,11 +908,39 @@ ${collect.shape}` : null;
                   onChange={() => setAllSelected(!allSelected)}
                 />
                 <span>{t.browser.all}</span>
-                <span className={styles.allCount}>{t.browser.selectedOfTotal(selectedCount, collect.items.length)}</span>
+                <span className={styles.allCount}>{t.browser.selectedOfTotal(selectedCount, selectableCount)}</span>
               </label>
             )}
 
-            {collect.items.length === 0 ? (
+            {flowResults.length > 0 && (
+              <section className={styles.flowResultSection} aria-labelledby="flow-results-title">
+                <h3 id="flow-results-title">{t.browser.flowResults(flowResults.length)}</h3>
+                <ul className={`${styles.foundList} ${styles.flowFoundList}`}>
+                  {flowResults.map((item, index) => (
+                    <li key={`${item.replayLabel}-${index}`}>
+                      <label>
+                        <input
+                          type="checkbox"
+                          disabled={!item.media}
+                          checked={Boolean(item.media) && selectedFlowResults[index] !== false}
+                          onChange={(event) =>
+                            setSelectedFlowResults((previous) => ({ ...previous, [index]: event.target.checked }))
+                          }
+                        />
+                        <div>
+                          <span title={item.replayLabel}>{item.replayLabel}</span>
+                          <p className={styles.adsNote} title={item.media ?? undefined}>
+                            {item.media ? safeHost(item.media) : t.browser.flowNoMedia}
+                          </p>
+                        </div>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            {collect && (collect.items.length === 0 ? (
               <p className={styles.collectEmpty}>{playedChosen ? t.browser.playedEmpty : t.browser.collectEmpty}</p>
             ) : imagesChosen ? (
               <PageImagesTray
@@ -622,7 +982,7 @@ ${collect.shape}` : null;
                   </li>
                 ))}
               </ul>
-            )}
+            ))}
 
             <div className={styles.trayFoot}>
               <button
@@ -634,7 +994,7 @@ ${collect.shape}` : null;
                 {added ? <Check size={16} aria-hidden /> : <Plus size={16} aria-hidden />}
                 {added ? t.browser.collectedAdded : t.browser.addCollected(selectedCount)}
               </button>
-              {!playedChosen && (showRuleForm ? (
+              {collect && !playedChosen && (showRuleForm ? (
                 <form className={styles.ruleForm} onSubmit={(e) => void saveRule(e)}>
                   <label>
                     <span>{t.browser.ruleName}</span>
@@ -661,7 +1021,7 @@ ${collect.shape}` : null;
                   {ruleSaved || collect.ruleId ? t.browser.ruleSaved : t.browser.saveRule}
                 </button>
               ))}
-              {!playedChosen && <button
+              {collect && !playedChosen && <button
                 type="button"
                 className={styles.ghost}
                 disabled={!sourceKey || sourceExists || sourceDone?.key === sourceKey || sourcePhase !== "idle"}
@@ -675,7 +1035,7 @@ ${collect.shape}` : null;
                       ? t.sources.previewing
                       : t.sources.trayRegister}
               </button>}
-              {!playedChosen && (sourceNotice ? (
+              {collect && !playedChosen && (sourceNotice ? (
                 <p role="alert" className={styles.collectError}>
                   {sourceNotice}
                 </p>
@@ -704,6 +1064,20 @@ function formatDuration(totalSeconds: number): string {
   return hours > 0
     ? `${hours}:${String(minutes).padStart(2, "0")}:${tail}`
     : `${minutes}:${tail}`;
+}
+
+function replayCount(flow: Flow, scopes: FlowScope[]): number {
+  const total = flow.steps.reduce((count, step, index) => {
+    const scope = scopes[index] ?? "this";
+    const choices = scope === "allOfKind" ? step.matchCount : scope === "restOfRow" ? step.rowCount - step.rowIndex : 1;
+    return count * Math.max(1, choices);
+  }, 1);
+  return Math.min(30, total);
+}
+
+function defaultFlowName(flow: Flow): string {
+  const label = flow.steps[flow.steps.length - 1]?.label || "Flow";
+  return [...`${label}（${safeHost(flow.startUrl)}）`].slice(0, 80).join("");
 }
 
 /** A page's host without "www.", for telling whether two URLs are on the same site. */

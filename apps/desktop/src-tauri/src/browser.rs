@@ -157,6 +157,9 @@ struct Session {
     played: PlayedPage,
     /// Finished page loads in this view, so a caller can wait for a reload it started.
     loads_finished: u64,
+    /// Script installed again whenever the visible page finishes loading. Used by the
+    /// prototype flow recorder; it only writes to a page global and exposes no IPC.
+    page_load_script: Option<&'static str>,
 }
 
 impl Default for Session {
@@ -168,6 +171,7 @@ impl Default for Session {
             page_open: false,
             generation: 0,
             loads_finished: 0,
+            page_load_script: None,
             event: BrowserEventState {
                 url: None,
                 loading: false,
@@ -347,6 +351,10 @@ impl BrowserManager {
     pub async fn execute(&self, script: &str) -> Result<serde_json::Value, String> {
         let webview = self.webview()?;
         execute_in(&webview, script).await
+    }
+
+    pub fn set_page_load_script(&self, script: Option<&'static str>) {
+        lock_recover(&self.session).page_load_script = script;
     }
 
     pub fn reload(&self) -> Result<(), String> {
@@ -627,6 +635,7 @@ impl BrowserManager {
                 BrowserManager::page_load(
                     &manager,
                     &event_app,
+                    &webview,
                     generation,
                     payload.url().clone(),
                     payload.event(),
@@ -986,6 +995,7 @@ impl BrowserManager {
     fn page_load(
         self: &Arc<Self>,
         app: &AppHandle,
+        webview: &Webview,
         generation: u64,
         url: Url,
         event: PageLoadEvent,
@@ -1031,7 +1041,15 @@ impl BrowserManager {
             }
             _ => None,
         };
+        let page_load_script = (event == PageLoadEvent::Finished && !is_blank)
+            .then_some(session.page_load_script)
+            .flatten();
         drop(session);
+        if let Some(script) = page_load_script
+            && let Err(error) = webview.eval(script)
+        {
+            eprintln!("could not inject visible-page script after load: {error}");
+        }
         let _ = app.emit("browser-state", state);
         if let Some((site_id, account_id)) = refresh {
             let manager = Arc::clone(self);
