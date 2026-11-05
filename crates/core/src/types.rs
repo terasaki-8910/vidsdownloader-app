@@ -79,6 +79,7 @@ pub struct PostprocessProgress {
 pub enum ErrorCategory {
     UnsupportedUrl,
     PageMediaNotFound,
+    PageGate,
     PageMediaChoice,
     LoginRequired,
     Unavailable,

@@ -145,6 +145,7 @@ export const ja: Translations = {
   errors: {
     UnsupportedUrl: "対応していない URL です",
     PageMediaNotFound: "ページで動画が見つかりませんでした",
+    PageGate: "確認のページで止まりました",
     PageMediaChoice: "動画がいくつか見つかりました",
     LoginRequired: "ログインが必要です",
     Unavailable: "動画が利用できません",

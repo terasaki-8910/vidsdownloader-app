@@ -276,6 +276,7 @@ fn error_reason(category: ErrorCategory, language: Language) -> &'static str {
         Language::Ja => match category {
             ErrorCategory::UnsupportedUrl => "対応していない URL です",
             ErrorCategory::PageMediaNotFound => "ページで動画が見つかりませんでした",
+            ErrorCategory::PageGate => "確認のページで止まりました",
             ErrorCategory::PageMediaChoice => "動画がいくつか見つかりました",
             ErrorCategory::LoginRequired => "ログインが必要です",
             ErrorCategory::Unavailable => "動画が利用できません",
@@ -293,6 +294,7 @@ fn error_reason(category: ErrorCategory, language: Language) -> &'static str {
         Language::En => match category {
             ErrorCategory::UnsupportedUrl => "This URL isn't supported",
             ErrorCategory::PageMediaNotFound => "No video was found on the page",
+            ErrorCategory::PageGate => "Stopped at a confirmation page",
             ErrorCategory::PageMediaChoice => "Several videos were found",
             ErrorCategory::LoginRequired => "Login required",
             ErrorCategory::Unavailable => "This video isn't available",
@@ -1096,6 +1098,7 @@ mod tests {
         for (category, name) in [
             (ErrorCategory::UnsupportedUrl, "UnsupportedUrl"),
             (ErrorCategory::PageMediaNotFound, "PageMediaNotFound"),
+            (ErrorCategory::PageGate, "PageGate"),
             (ErrorCategory::PageMediaChoice, "PageMediaChoice"),
             (ErrorCategory::LoginRequired, "LoginRequired"),
             (ErrorCategory::Unavailable, "Unavailable"),

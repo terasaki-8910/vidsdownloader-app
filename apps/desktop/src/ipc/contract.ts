@@ -17,6 +17,7 @@ export type JobState =
 export type ErrorCategory =
   | "UnsupportedUrl"
   | "PageMediaNotFound"
+  | "PageGate"
   | "PageMediaChoice"
   | "LoginRequired"
   | "Unavailable"

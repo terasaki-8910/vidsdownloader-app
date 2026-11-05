@@ -148,6 +148,7 @@ export const en: Translations = {
   errors: {
     UnsupportedUrl: "This URL isn't supported",
     PageMediaNotFound: "No video was found on the page",
+    PageGate: "Stopped at a confirmation page",
     PageMediaChoice: "Several videos were found",
     LoginRequired: "Login required",
     Unavailable: "This video isn't available",

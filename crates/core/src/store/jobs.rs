@@ -176,6 +176,7 @@ fn error_category_str(category: ErrorCategory) -> &'static str {
     match category {
         ErrorCategory::UnsupportedUrl => "unsupported_url",
         ErrorCategory::PageMediaNotFound => "page_media_not_found",
+        ErrorCategory::PageGate => "page_gate",
         ErrorCategory::PageMediaChoice => "page_media_choice",
         ErrorCategory::LoginRequired => "login_required",
         ErrorCategory::Unavailable => "unavailable",
@@ -194,6 +195,7 @@ fn parse_error_category(value: &str) -> Result<ErrorCategory, StoreError> {
     match value {
         "unsupported_url" => Ok(ErrorCategory::UnsupportedUrl),
         "page_media_not_found" => Ok(ErrorCategory::PageMediaNotFound),
+        "page_gate" => Ok(ErrorCategory::PageGate),
         "page_media_choice" => Ok(ErrorCategory::PageMediaChoice),
         "login_required" => Ok(ErrorCategory::LoginRequired),
         "unavailable" => Ok(ErrorCategory::Unavailable),

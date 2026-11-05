@@ -169,6 +169,7 @@ async fn run_with_page_media(
             url: retry.page_url.clone(),
             preset: runtime.preset,
             cancel: retry.cancel.clone(),
+            sink: retry.sink.clone(),
         })
         .await;
     retry.sink.set_phase(None);
@@ -182,6 +183,7 @@ async fn run_with_page_media(
     let (media, choices) = match found {
         page_media::PageMediaSearchResult::One(media) => (media, Vec::new()),
         page_media::PageMediaSearchResult::Ask { media, choices } => (media, choices),
+        page_media::PageMediaSearchResult::Gate => return Err(page_gate()),
     };
     runtime.page_media = Some(media.clone());
     runtime.page_media_choices = choices.clone();
@@ -237,6 +239,13 @@ fn page_media_not_found() -> JobFailure {
     JobFailure {
         category: ErrorCategory::PageMediaNotFound,
         message: "no video was found on the page".to_owned(),
+    }
+}
+
+fn page_gate() -> JobFailure {
+    JobFailure {
+        category: ErrorCategory::PageGate,
+        message: "stopped at a confirmation page".to_owned(),
     }
 }
 
@@ -673,6 +682,36 @@ mod tests {
             "the row names and then clears the page search"
         );
         assert_eq!(queue.snapshot()[0].phase, None);
+    }
+
+    #[tokio::test]
+    async fn a_confirmation_page_reports_page_gate() {
+        let attempt = Arc::new(FakeAttempt {
+            results: Mutex::new(VecDeque::from([Err(unsupported())])),
+            urls: Mutex::new(Vec::new()),
+        });
+        let finder = Arc::new(FakeFinder {
+            result: Mutex::new(Some(Ok(Some(page_media::PageMediaSearchResult::Gate)))),
+            calls: AtomicUsize::new(0),
+        });
+        let queue = Queue::new(
+            WrapperFake {
+                attempt,
+                finder: Arc::clone(&finder),
+            },
+            1,
+        );
+        let mut events = queue.subscribe();
+        let id = queue.enqueue(PAGE_URL, video_options());
+
+        let (state, result) = finished(&mut events, id).await;
+
+        assert_eq!(state, JobState::Failed);
+        assert_eq!(
+            result.unwrap().unwrap_err().category,
+            ErrorCategory::PageGate
+        );
+        assert_eq!(finder.calls.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]

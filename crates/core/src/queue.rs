@@ -10,14 +10,15 @@
 
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
-use std::future::Future;
+use std::future::{Future, poll_fn};
+use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use tokio::runtime::Handle;
-use tokio::sync::{Notify, broadcast};
+use tokio::sync::{Notify, broadcast, mpsc};
 use tokio::task::JoinError;
 
 use crate::store::{JobFilter, NewJob, Store, StoreError};
@@ -187,7 +188,75 @@ pub struct JobSink {
     attempt: u32,
 }
 
+struct ReleasedSlot {
+    core: Arc<Core>,
+    id: JobId,
+    attempt: u32,
+    reacquired: bool,
+}
+
+impl Drop for ReleasedSlot {
+    fn drop(&mut self) {
+        if self.reacquired {
+            return;
+        }
+        match self.core.try_reacquire_slot(self.id, self.attempt) {
+            SlotReacquire::Acquired | SlotReacquire::Inactive => {}
+            SlotReacquire::Waiting => {
+                let core = Arc::clone(&self.core);
+                let (id, attempt) = (self.id, self.attempt);
+                if let Ok(runtime) = Handle::try_current() {
+                    runtime.spawn(async move {
+                        core.reacquire_slot(id, attempt).await;
+                    });
+                }
+            }
+        }
+    }
+}
+
+enum SlotReacquire {
+    Acquired,
+    Waiting,
+    Inactive,
+}
+
 impl JobSink {
+    /// Runs `work` without occupying one of the queue's concurrency slots.
+    ///
+    /// Waiting jobs may start while `work` is pending. Before returning (or propagating a
+    /// panic from `work`), this attempt waits for and takes a slot again.
+    pub async fn without_slot<T>(&self, work: impl Future<Output = T>) -> T {
+        if !self.core.release_slot(self.id, self.attempt) {
+            return work.await;
+        }
+        let mut released = ReleasedSlot {
+            core: Arc::clone(&self.core),
+            id: self.id,
+            attempt: self.attempt,
+            reacquired: false,
+        };
+
+        // Poll through `catch_unwind` so a panicking future still reacquires its slot before
+        // the panic reaches the queue's task boundary.
+        let mut work = Box::pin(work);
+        let outcome = poll_fn(|context| {
+            match catch_unwind(AssertUnwindSafe(|| work.as_mut().poll(context))) {
+                Ok(std::task::Poll::Ready(value)) => std::task::Poll::Ready(Ok(value)),
+                Ok(std::task::Poll::Pending) => std::task::Poll::Pending,
+                Err(payload) => std::task::Poll::Ready(Err(payload)),
+            }
+        })
+        .await;
+
+        self.core.reacquire_slot(self.id, self.attempt).await;
+        released.reacquired = true;
+        match outcome {
+            Ok(value) => value,
+            Err(payload) => resume_unwind(payload),
+        }
+    }
+
     /// Moves the job forward to `state`: `Probing`, `Ready`, `Downloading` or
     /// `PostProcessing`. States may be skipped, and reporting the current state again does
     /// nothing. Going back is refused and published as [`QueueEvent::TransitionRejected`].
@@ -384,6 +453,8 @@ struct Core {
     board: Mutex<Board>,
     events: broadcast::Sender<QueueEvent>,
     store: Option<Arc<Mutex<Store>>>,
+    starts: mpsc::UnboundedSender<Start>,
+    slot_available: Notify,
 }
 
 struct Board {
@@ -420,6 +491,8 @@ struct Job {
     /// The cancel token of the running attempt; `Some` from its start until its executor
     /// returns.
     running: Option<CancelToken>,
+    /// Whether this attempt currently occupies one of `Board::running`'s slots.
+    slot_held: bool,
 }
 
 struct Start {
@@ -443,6 +516,7 @@ impl<E: JobExecutor> Queue<E> {
     /// creates the queue.
     pub fn new(executor: E, concurrency: usize) -> Self {
         let (events, _) = broadcast::channel(EVENT_BUFFER);
+        let (starts, receiver) = mpsc::unbounded_channel();
         let board = Board {
             jobs: BTreeMap::new(),
             order: Vec::new(),
@@ -452,15 +526,19 @@ impl<E: JobExecutor> Queue<E> {
             next_id: 1,
             fallback_next_id: FALLBACK_FIRST_ID,
         };
-        Self {
+        let queue = Self {
             core: Arc::new(Core {
                 board: Mutex::new(board),
                 events,
                 store: None,
+                starts,
+                slot_available: Notify::new(),
             }),
             executor: Arc::new(executor),
             runtime: Handle::current(),
-        }
+        };
+        queue.start_dispatcher(receiver);
+        queue
     }
 
     /// A write-through queue restored from `store` before this function returns.
@@ -559,6 +637,7 @@ impl<E: JobExecutor> Queue<E> {
                     persisted: true,
                     attempt_recorded,
                     running: None,
+                    slot_held: false,
                 },
             );
             order.push(id);
@@ -568,6 +647,7 @@ impl<E: JobExecutor> Queue<E> {
         }
 
         let (events, _) = broadcast::channel(EVENT_BUFFER);
+        let (starts, receiver) = mpsc::unbounded_channel();
         let core = Arc::new(Core {
             board: Mutex::new(Board {
                 jobs,
@@ -580,12 +660,15 @@ impl<E: JobExecutor> Queue<E> {
             }),
             events,
             store: Some(store),
+            starts,
+            slot_available: Notify::new(),
         });
         let queue = Self {
             core: Arc::clone(&core),
             executor: Arc::new(executor),
             runtime: Handle::current(),
         };
+        queue.start_dispatcher(receiver);
         let starts = {
             let mut board = core.lock();
             take_startable(&core, &mut board)
@@ -630,6 +713,7 @@ impl<E: JobExecutor> Queue<E> {
                     persisted,
                     attempt_recorded: false,
                     running: None,
+                    slot_held: false,
                 },
             );
             board.order.push(id);
@@ -941,6 +1025,7 @@ impl<E: JobExecutor> Queue<E> {
             guard.concurrency = concurrency.max(1);
             take_startable(&self.core, &mut guard)
         };
+        self.core.slot_available.notify_waiters();
         self.launch(starts);
     }
 
@@ -979,27 +1064,33 @@ impl<E: JobExecutor> Queue<E> {
 
     /// Runs each attempt on a task of its own.
     fn launch(&self, starts: Vec<Start>) {
-        for start in starts {
-            if start.record_attempt {
-                self.core.persist("record queue job attempt", |store| {
-                    store.increment_attempts(job_id_i64(start.context.id), unix_now())
-                });
-            }
-            self.runtime.spawn(self.clone().run(start.context));
-        }
+        self.core.launch(starts);
     }
 
-    /// Runs one attempt, records how it ended, and starts what may start next. The
-    /// executor runs on a task of its own so that a panic stays inside it.
-    async fn run(self, job: JobContext) {
-        let (id, attempt) = (job.id, job.attempt);
+    /// Receives attempts scheduled by the core. The indirection lets a [`JobSink`] start
+    /// newly fitting jobs when it releases a slot, without making the sink generic over the
+    /// executor.
+    fn start_dispatcher(&self, mut receiver: mpsc::UnboundedReceiver<Start>) {
+        let weak_core = Arc::downgrade(&self.core);
         let executor = Arc::clone(&self.executor);
-        let result = self
-            .runtime
-            .spawn(async move { executor.run(job).await })
-            .await;
-        let starts = finish(&self.core, id, attempt, result);
-        self.launch(starts);
+        let runtime = self.runtime.clone();
+        self.runtime.spawn(async move {
+            while let Some(start) = receiver.recv().await {
+                let Some(core) = weak_core.upgrade() else {
+                    break;
+                };
+                let executor = Arc::clone(&executor);
+                let panic_runtime = runtime.clone();
+                runtime.spawn(async move {
+                    let (id, attempt) = (start.context.id, start.context.attempt);
+                    let result = panic_runtime
+                        .spawn(async move { executor.run(start.context).await })
+                        .await;
+                    let starts = finish(&core, id, attempt, result);
+                    core.launch(starts);
+                });
+            }
+        });
     }
 }
 
@@ -1020,6 +1111,77 @@ impl<E> fmt::Debug for Queue<E> {
 }
 
 impl Core {
+    fn launch(self: &Arc<Self>, starts: Vec<Start>) {
+        for start in starts {
+            if start.record_attempt {
+                self.persist("record queue job attempt", |store| {
+                    store.increment_attempts(job_id_i64(start.context.id), unix_now())
+                });
+            }
+            if self.starts.send(start).is_err() {
+                eprintln!("could not launch queue job: executor dispatcher stopped");
+            }
+        }
+    }
+
+    fn release_slot(self: &Arc<Self>, id: JobId, attempt: u32) -> bool {
+        let (released, starts) = {
+            let mut board = self.lock();
+            let released = board.jobs.get(&id).is_some_and(|job| {
+                job.attempt == attempt && job.running.is_some() && job.slot_held
+            });
+            if !released {
+                return false;
+            }
+            board
+                .jobs
+                .get_mut(&id)
+                .expect("job checked above")
+                .slot_held = false;
+            board.running -= 1;
+            let starts = take_startable(self, &mut board);
+            (true, starts)
+        };
+        self.slot_available.notify_waiters();
+        self.launch(starts);
+        released
+    }
+
+    async fn reacquire_slot(self: &Arc<Self>, id: JobId, attempt: u32) {
+        loop {
+            // Register before checking so a finish or release between the check and await
+            // cannot be missed.
+            let notified = self.slot_available.notified();
+            match self.try_reacquire_slot(id, attempt) {
+                SlotReacquire::Acquired | SlotReacquire::Inactive => return,
+                SlotReacquire::Waiting => notified.await,
+            }
+        }
+    }
+
+    fn try_reacquire_slot(&self, id: JobId, attempt: u32) -> SlotReacquire {
+        let mut board = self.lock();
+        let Some(job) = board.jobs.get(&id) else {
+            return SlotReacquire::Inactive;
+        };
+        if job.attempt != attempt || job.running.is_none() {
+            return SlotReacquire::Inactive;
+        }
+        if job.slot_held {
+            return SlotReacquire::Acquired;
+        }
+        if board.running >= board.concurrency {
+            return SlotReacquire::Waiting;
+        }
+        board.running += 1;
+        board
+            .jobs
+            .get_mut(&id)
+            .expect("job checked above")
+            .slot_held = true;
+        SlotReacquire::Acquired
+    }
+
     fn lock(&self) -> MutexGuard<'_, Board> {
         // No user code runs while the lock is held, so a poisoned lock still holds
         // consistent data.
@@ -1268,6 +1430,7 @@ fn take_startable(core: &Arc<Core>, board: &mut Board) -> Vec<Start> {
         }
         let cancel = CancelToken::new();
         job.running = Some(cancel.clone());
+        job.slot_held = true;
         board.running += 1;
         core.emit(QueueEvent::Started {
             id,
@@ -1310,7 +1473,10 @@ fn finish(
             && job.attempt == attempt
             && let Some(token) = job.running.take()
         {
-            board.running -= 1;
+            if job.slot_held {
+                job.slot_held = false;
+                board.running -= 1;
+            }
             let outcome_or_error = if token.is_cancelled() {
                 None
             } else {
@@ -1344,6 +1510,7 @@ fn finish(
         }
         (take_startable(core, board), finished)
     };
+    core.slot_available.notify_waiters();
     if let Some((true, state, outcome, error)) = finished {
         core.finish_attempt(id, state, outcome.as_ref(), error.as_ref());
     }
@@ -1393,5 +1560,255 @@ fn rank(state: JobState) -> u8 {
         JobState::Downloading => 3,
         JobState::PostProcessing => 4,
         JobState::Done | JobState::Failed | JobState::Canceled => 5,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicBool, AtomicUsize};
+
+    use tokio::sync::Semaphore;
+
+    use super::*;
+
+    async fn wait_for_count(value: &AtomicUsize, changed: &Notify, expected: usize) {
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            loop {
+                let notified = changed.notified();
+                if value.load(Ordering::SeqCst) >= expected {
+                    return;
+                }
+                notified.await;
+            }
+        })
+        .await
+        .expect("the expected executor checkpoint is reached");
+    }
+
+    async fn wait_until_finished<E: JobExecutor>(queue: &Queue<E>) {
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            loop {
+                if queue.snapshot().iter().all(|job| job.state.is_terminal()) {
+                    return;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the queue finishes");
+    }
+
+    #[derive(Default)]
+    struct OneSlotShared {
+        a_released: Notify,
+        b_finished: Notify,
+        events: Mutex<Vec<&'static str>>,
+    }
+
+    struct OneSlotExecutor(Arc<OneSlotShared>);
+
+    impl JobExecutor for OneSlotExecutor {
+        async fn run(&self, job: JobContext) -> Result<JobOutcome, JobFailure> {
+            if job.url == "a" {
+                job.sink
+                    .without_slot(async {
+                        self.0.events.lock().unwrap().push("a waiting");
+                        self.0.a_released.notify_one();
+                        self.0.b_finished.notified().await;
+                    })
+                    .await;
+                self.0.events.lock().unwrap().push("a resumed");
+            } else {
+                self.0.events.lock().unwrap().push("b ran");
+                self.0.b_finished.notify_one();
+            }
+            Ok(JobOutcome::default())
+        }
+    }
+
+    #[tokio::test]
+    async fn without_slot_lets_the_next_job_run_before_resuming() {
+        let shared = Arc::new(OneSlotShared::default());
+        let queue = Queue::new(OneSlotExecutor(Arc::clone(&shared)), 1);
+        queue.enqueue("a", serde_json::Value::Null);
+        shared.a_released.notified().await;
+        queue.enqueue("b", serde_json::Value::Null);
+
+        wait_until_finished(&queue).await;
+
+        assert_eq!(
+            shared.events.lock().unwrap().as_slice(),
+            ["a waiting", "b ran", "a resumed"]
+        );
+        assert_eq!(queue.core.lock().running, 0);
+    }
+
+    struct LimitShared {
+        released: AtomicUsize,
+        released_changed: Notify,
+        c_started: AtomicBool,
+        c_started_changed: Notify,
+        work_gate: Semaphore,
+        resumed: AtomicUsize,
+        resumed_changed: Notify,
+        c_gate: Semaphore,
+        return_gate: Semaphore,
+    }
+
+    impl Default for LimitShared {
+        fn default() -> Self {
+            Self {
+                released: AtomicUsize::new(0),
+                released_changed: Notify::new(),
+                c_started: AtomicBool::new(false),
+                c_started_changed: Notify::new(),
+                work_gate: Semaphore::new(0),
+                resumed: AtomicUsize::new(0),
+                resumed_changed: Notify::new(),
+                c_gate: Semaphore::new(0),
+                return_gate: Semaphore::new(0),
+            }
+        }
+    }
+
+    struct LimitExecutor(Arc<LimitShared>);
+
+    impl JobExecutor for LimitExecutor {
+        async fn run(&self, job: JobContext) -> Result<JobOutcome, JobFailure> {
+            if job.url == "c" {
+                self.0.c_started.store(true, Ordering::SeqCst);
+                self.0.c_started_changed.notify_one();
+                self.0.c_gate.acquire().await.unwrap().forget();
+            } else {
+                job.sink
+                    .without_slot(async {
+                        self.0.released.fetch_add(1, Ordering::SeqCst);
+                        self.0.released_changed.notify_one();
+                        self.0.work_gate.acquire().await.unwrap().forget();
+                    })
+                    .await;
+                self.0.resumed.fetch_add(1, Ordering::SeqCst);
+                self.0.resumed_changed.notify_one();
+                self.0.return_gate.acquire().await.unwrap().forget();
+            }
+            Ok(JobOutcome::default())
+        }
+    }
+
+    #[tokio::test]
+    async fn released_jobs_never_raise_running_past_the_limit() {
+        let shared = Arc::new(LimitShared::default());
+        let queue = Queue::new(LimitExecutor(Arc::clone(&shared)), 2);
+        for url in ["a", "b", "c"] {
+            queue.enqueue(url, serde_json::Value::Null);
+        }
+
+        wait_for_count(&shared.released, &shared.released_changed, 2).await;
+        if !shared.c_started.load(Ordering::SeqCst) {
+            shared.c_started_changed.notified().await;
+        }
+        assert_eq!(queue.core.lock().running, 1);
+        let running = queue.core.lock().running;
+        assert!(running <= queue.concurrency());
+
+        shared.work_gate.add_permits(2);
+        wait_for_count(&shared.resumed, &shared.resumed_changed, 1).await;
+        assert_eq!(queue.core.lock().running, 2);
+        let running = queue.core.lock().running;
+        assert!(running <= queue.concurrency());
+
+        shared.c_gate.add_permits(1);
+        wait_for_count(&shared.resumed, &shared.resumed_changed, 2).await;
+        assert_eq!(queue.core.lock().running, 2);
+        let running = queue.core.lock().running;
+        assert!(running <= queue.concurrency());
+
+        shared.return_gate.add_permits(2);
+        wait_until_finished(&queue).await;
+        assert_eq!(queue.core.lock().running, 0);
+    }
+
+    struct CountShared {
+        active: AtomicUsize,
+        a_released: Notify,
+        b_started: Notify,
+        work_gate: Semaphore,
+        a_resumed: Notify,
+        return_gate: Semaphore,
+    }
+
+    impl Default for CountShared {
+        fn default() -> Self {
+            Self {
+                active: AtomicUsize::new(0),
+                a_released: Notify::new(),
+                b_started: Notify::new(),
+                work_gate: Semaphore::new(0),
+                a_resumed: Notify::new(),
+                return_gate: Semaphore::new(0),
+            }
+        }
+    }
+
+    struct CountExecutor(Arc<CountShared>);
+
+    impl JobExecutor for CountExecutor {
+        async fn run(&self, job: JobContext) -> Result<JobOutcome, JobFailure> {
+            self.0.active.fetch_add(1, Ordering::SeqCst);
+            if job.url == "a" {
+                job.sink
+                    .without_slot(async {
+                        self.0.a_released.notify_one();
+                        self.0.work_gate.acquire().await.unwrap().forget();
+                    })
+                    .await;
+                self.0.a_resumed.notify_one();
+            } else {
+                self.0.b_started.notify_one();
+            }
+            self.0.return_gate.acquire().await.unwrap().forget();
+            self.0.active.fetch_sub(1, Ordering::SeqCst);
+            Ok(JobOutcome::default())
+        }
+    }
+
+    #[tokio::test]
+    async fn reacquired_count_matches_the_jobs_still_running() {
+        let shared = Arc::new(CountShared::default());
+        let queue = Queue::new(CountExecutor(Arc::clone(&shared)), 2);
+        queue.enqueue("a", serde_json::Value::Null);
+        shared.a_released.notified().await;
+        queue.enqueue("b", serde_json::Value::Null);
+        shared.b_started.notified().await;
+
+        shared.work_gate.add_permits(1);
+        shared.a_resumed.notified().await;
+
+        assert_eq!(shared.active.load(Ordering::SeqCst), 2);
+        assert_eq!(queue.core.lock().running, 2);
+
+        shared.return_gate.add_permits(2);
+        wait_until_finished(&queue).await;
+    }
+
+    struct PanicExecutor;
+
+    impl JobExecutor for PanicExecutor {
+        async fn run(&self, job: JobContext) -> Result<JobOutcome, JobFailure> {
+            job.sink.without_slot(async { panic!("work failed") }).await;
+            Ok(JobOutcome::default())
+        }
+    }
+
+    #[tokio::test]
+    async fn panicking_work_reacquires_before_the_attempt_finishes() {
+        let queue = Queue::new(PanicExecutor, 1);
+        queue.enqueue("panic", serde_json::Value::Null);
+
+        wait_until_finished(&queue).await;
+
+        let board = queue.core.lock();
+        assert_eq!(board.running, 0);
+        assert_eq!(board.jobs.values().next().unwrap().state, JobState::Failed);
     }
 }

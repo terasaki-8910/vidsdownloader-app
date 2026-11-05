@@ -14,6 +14,7 @@ pub mod firefox;
 pub mod gallery_dl;
 pub mod item_files;
 pub mod naming;
+pub mod page_gate;
 pub mod page_images;
 pub mod page_media;
 pub mod parse;

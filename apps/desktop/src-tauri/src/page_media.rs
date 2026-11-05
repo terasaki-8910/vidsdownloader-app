@@ -9,8 +9,9 @@ use serde::Deserialize;
 use tauri::{AppHandle, Url};
 use vids_core::args::Preset;
 use vids_core::executor::{PageMedia, PageMediaChoice};
+use vids_core::page_gate::{GateSignals, looks_like_gate};
 use vids_core::page_media::{MediaCandidate, MediaChoice, PlayerHint, QualityLimit, add_candidate};
-use vids_core::queue::{CancelToken, JobFailure};
+use vids_core::queue::{CancelToken, JobFailure, JobSink};
 use vids_core::store::Store;
 use vids_core::types::ErrorCategory;
 
@@ -23,6 +24,7 @@ const FIRST_CANDIDATE_GRACE: Duration = Duration::from_secs(3);
 const PLAY_AFTER: Duration = Duration::from_secs(10);
 const SEARCH_LIMIT: Duration = Duration::from_secs(30);
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
+const GATE_POLL_INTERVAL: Duration = Duration::from_secs(5);
 
 pub(crate) const PLAY_SCRIPT: &str = r#"(() => {
   document.querySelectorAll("video").forEach((video) => {
@@ -47,14 +49,36 @@ const PLAYER_HINTS_SCRIPT: &str = r#"(() => {
   }
 })()"#;
 
+const GATE_SIGNALS_SCRIPT: &str = r#"(() => {
+  try {
+    const labels = Array.from(
+      document.querySelectorAll('button, [role="button"], a.btn, input[type="submit"]')
+    ).slice(0, 40).map((element) => {
+      const value = element instanceof HTMLInputElement ? element.value : element.innerText;
+      return value || element.getAttribute("aria-label") || element.textContent || "";
+    });
+    return {
+      url: location.href,
+      title: document.title,
+      text: (document.body?.innerText || "").slice(0, 4000),
+      buttons: labels,
+      hasVideo: document.querySelector("video") !== null,
+    };
+  } catch (_) {
+    return null;
+  }
+})()"#;
+
 pub struct PageMediaRequest {
     pub url: String,
     pub preset: Preset,
     pub cancel: CancelToken,
+    pub sink: JobSink,
 }
 
 pub enum PageMediaSearchResult {
     One(PageMedia),
+    Gate,
     Ask {
         media: PageMedia,
         choices: Vec<PageMediaChoice>,
@@ -89,10 +113,15 @@ impl BrowserPageMediaFinder {
         &self,
         request: PageMediaRequest,
     ) -> Result<Option<PageMediaSearchResult>, JobFailure> {
-        let _search = tokio::select! {
-            guard = self.one_at_a_time.lock() => guard,
-            () = request.cancel.cancelled() => return Err(canceled()),
-        };
+        let _search = request
+            .sink
+            .without_slot(async {
+                tokio::select! {
+                    guard = self.one_at_a_time.lock() => Ok(guard),
+                    () = request.cancel.cancelled() => Err(canceled()),
+                }
+            })
+            .await?;
         let url = Url::parse(&request.url).map_err(|error| failure(error.to_string()))?;
         let profile = self.profile_for_url(&request.url);
         let mut page = self
@@ -107,6 +136,7 @@ impl BrowserPageMediaFinder {
         let mut first_candidate = None;
         let mut facts = None;
         let mut played = false;
+        let mut gate_checked_at = None;
 
         loop {
             if request.cancel.is_cancelled() {
@@ -122,6 +152,17 @@ impl BrowserPageMediaFinder {
                 first_candidate = Some(Instant::now());
             }
             let elapsed = started.elapsed();
+            let gate_check_due = gate_checked_at
+                .is_none_or(|checked: Instant| checked.elapsed() >= GATE_POLL_INTERVAL);
+            if candidates.is_empty() && page.is_loaded() && gate_check_due {
+                gate_checked_at = Some(Instant::now());
+                if let Ok(value) = execute(&page, GATE_SIGNALS_SCRIPT, &request.cancel).await
+                    && let Some(signals) = parse_gate_signals(value, false)
+                    && looks_like_gate(&signals)
+                {
+                    return Ok(Some(PageMediaSearchResult::Gate));
+                }
+            }
             if first_candidate.is_some_and(|at| at.elapsed() >= FIRST_CANDIDATE_GRACE)
                 || elapsed >= SEARCH_LIMIT
             {
@@ -277,6 +318,28 @@ struct PageFacts {
 
 fn parse_facts(value: serde_json::Value) -> Option<PageFacts> {
     serde_json::from_value(value).ok()
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PageGateSignals {
+    url: String,
+    title: String,
+    text: String,
+    buttons: Vec<String>,
+    has_video: bool,
+}
+
+fn parse_gate_signals(value: serde_json::Value, media_seen: bool) -> Option<GateSignals> {
+    let signals: PageGateSignals = serde_json::from_value(value).ok()?;
+    Some(GateSignals {
+        url: signals.url,
+        title: signals.title,
+        text: signals.text,
+        buttons: signals.buttons,
+        has_video: signals.has_video,
+        media_seen,
+    })
 }
 
 fn bounded(value: String, max: usize) -> Option<String> {

@@ -442,6 +442,20 @@ seedJob({
   ],
 });
 
+seedJob({
+  id: 15,
+  url: "https://video.example.com/age-check?return=%2Fwatch%2Ffeatured",
+  state: "Failed",
+  attempt: 1,
+  progress: null,
+  speedBytesPerS: null,
+  etaS: null,
+  error: { category: "PageGate", message: "stopped at a confirmation page" },
+  details: details({ title: "Featured video", site: "video.example.com" }),
+  outputPath: null,
+  skipped: null,
+});
+
 function update(id: number, patch: Partial<JobRow>): void {
   const current = jobs.get(id);
   if (!current) return;

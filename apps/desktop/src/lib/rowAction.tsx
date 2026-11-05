@@ -103,7 +103,11 @@ export function getRowAction(job: JobRow, t: Translations, handlers: RowActionHa
   if (job.state === "Failed" && job.error?.category === "LoginRequired") {
     return { kind: "login", icon: null, label: t.common.login, onClick: handlers.onLogin };
   }
-  if (job.state === "Failed" && job.error?.category === "PageMediaNotFound" && handlers.onOpenInBrowser) {
+  if (
+    job.state === "Failed" &&
+    (job.error?.category === "PageMediaNotFound" || job.error?.category === "PageGate") &&
+    handlers.onOpenInBrowser
+  ) {
     return { kind: "text", icon: null, label: t.siteReport.openInBrowser, onClick: handlers.onOpenInBrowser };
   }
   if (job.state === "Failed" && job.error?.category === "PageMediaChoice" && job.pageMediaChoices.length > 0) {
