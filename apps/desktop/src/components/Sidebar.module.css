@@ -1,0 +1,165 @@
+.sidebar {
+  width: 232px;
+  flex: none;
+  background: var(--sidebar);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 12px 12px;
+  min-width: 0;
+}
+
+.sidebar[data-rail] {
+  width: 60px;
+  align-items: center;
+  padding: 14px 10px;
+}
+
+.brand {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  padding: 2px 8px;
+  color: var(--ink);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Tinted, not solid -- the only solid button on screen is the Downloads "add". */
+.addUrl {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--accent-fill);
+  color: var(--accent-ink);
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.addUrl:hover {
+  filter: brightness(0.97);
+}
+
+.sidebar[data-rail] .addUrl {
+  width: 40px;
+  padding: 0;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-2);
+  white-space: nowrap;
+  text-align: left;
+  width: 100%;
+}
+
+.navItem:hover {
+  background: var(--hover);
+}
+
+.navItem[aria-current="page"] {
+  background: var(--accent-fill);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.navItem[aria-current="page"] svg {
+  color: var(--accent-ink);
+}
+
+.sidebar[data-rail] .navItem {
+  width: 40px;
+  justify-content: center;
+  padding: 0;
+}
+
+.navLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.navItem[aria-current="page"] .count {
+  color: var(--accent-ink);
+}
+
+.foot {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sidebar[data-rail] .foot {
+  flex-direction: column;
+}
+
+.settingsLink {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-2);
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.settingsLink:hover {
+  background: var(--hover);
+}
+
+/* Settings is a destination like the nav items, so its footer button is tinted when current. */
+.settingsLink[aria-current="page"] {
+  background: var(--accent-fill);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.settingsLink[aria-current="page"] svg {
+  color: var(--accent-ink);
+}
+
+.sidebar[data-rail] .settingsLink {
+  flex: none;
+  width: 40px;
+  justify-content: center;
+  padding: 0;
+}

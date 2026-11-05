@@ -1,0 +1,39 @@
+/* The "..." menu on a saved item. Item, separator and popover styles come from FolderMenu's
+   CSS module; these rules only fit them to a short action menu. */
+.wrap {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+}
+
+/* FolderMenu's popover is absolute and 440px wide for folder paths; an action menu is
+   fixed to the window (RowMenu.tsx sets top/bottom and right) and hugs its labels. */
+.wrap .popover {
+  position: fixed;
+  top: auto;
+  right: auto;
+  width: max-content;
+  min-width: 200px;
+  max-width: calc(100vw - 48px);
+}
+
+/* No check-mark column: one label per item. */
+.menu [role="menuitem"] {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+/* The danger color the app uses for errors (the tools "failed" status, login-required rows). */
+.menu .danger {
+  color: var(--danger);
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.menu [role="menuitem"]:disabled {
+  color: var(--muted);
+  opacity: 0.6;
+  cursor: default;
+}

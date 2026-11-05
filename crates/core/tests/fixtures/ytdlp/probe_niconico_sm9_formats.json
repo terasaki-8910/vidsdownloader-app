@@ -1,0 +1,28 @@
+{
+  "id": "sm9",
+  "extractor_key": "Niconico",
+  "duration": 320,
+  "format_id": "video-h264-360p-lowest-1+audio-aac-128kbps",
+  "requested_formats": [
+    {
+      "format_id": "video-h264-360p-lowest-1",
+      "filesize": null,
+      "filesize_approx": null,
+      "tbr": 328.957,
+      "vbr": 328.957,
+      "abr": 0,
+      "protocol": "m3u8_native",
+      "ext": "mp4"
+    },
+    {
+      "format_id": "audio-aac-128kbps",
+      "filesize": null,
+      "filesize_approx": null,
+      "tbr": 104.747,
+      "vbr": 0,
+      "abr": 104.747,
+      "protocol": "m3u8_native",
+      "ext": "mp4"
+    }
+  ]
+}

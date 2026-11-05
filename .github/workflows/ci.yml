@@ -1,0 +1,79 @@
+# Checks every push and pull request on Windows and macOS: the app's TypeScript and UI lint,
+# the frontend build (the app crate embeds apps/desktop/dist), rustfmt, clippy and the tests.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # The pnpm version comes from apps/desktop/package.json "packageManager".
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: apps/desktop/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install the app's packages
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: apps/desktop
+        run: pnpm typecheck
+
+      - name: UI lint
+        working-directory: apps/desktop
+        run: pnpm lint:ui
+
+      - name: Build the frontend
+        working-directory: apps/desktop
+        run: pnpm build
+
+      - name: rustfmt
+        run: cargo fmt --all --check
+
+      - name: clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Tests
+        run: cargo test --workspace
+
+      # The pinned macOS ffmpeg, downloaded and run for real (libass included).
+      - name: Real macOS ffmpeg install
+        if: runner.os == 'macOS'
+        run: cargo test -p vids-core --test tools_real_macos -- --ignored
+
+      # The collector script on the fixture pages in headless Edge (preinstalled on the runner).
+      - name: Collector test
+        if: runner.os == 'Windows'
+        working-directory: apps/desktop
+        run: pnpm test:collector

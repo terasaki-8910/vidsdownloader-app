@@ -1,0 +1,124 @@
+/* The page-images body of the browser's tray. Same side padding (18px) as the tray's own
+   header and footer. */
+.groups {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 18px 8px;
+  display: grid;
+  align-content: start;
+  gap: 16px;
+}
+
+.groupTitle {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cell {
+  min-width: 0;
+}
+
+/* The whole image toggles its checkbox. */
+.cellLabel {
+  position: relative;
+  display: block;
+  cursor: pointer;
+}
+
+.image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--thumb);
+}
+
+/* An image left out of the queue steps back. */
+.cell[data-checked="false"] .image {
+  opacity: 0.45;
+}
+
+.check {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--found);
+  cursor: pointer;
+}
+
+/* Focus rings the whole image: the 16px box on top of a picture is hard to see on its own.
+   The ring sits on the label, not the image, so a stepped-back (unchecked) image does not
+   fade it. */
+.check:focus-visible {
+  outline: none;
+}
+
+.cellLabel:has(.check:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.linksGroup {
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.groupToggle {
+  width: 100%;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.groupToggle:hover {
+  background: var(--hover);
+}
+
+.groupToggle svg {
+  flex: none;
+  color: var(--muted);
+}
+
+.links {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0 6px;
+}
+
+.links li {
+  padding: 5px 0;
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.45;
+  /* One URL per line; the full URL is in the tooltip. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

@@ -1,0 +1,13 @@
+.fileName { margin: 8px 0 0; color: var(--muted); font-family: var(--mono); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.choices { display: grid; gap: 0; margin: 16px 0 0; padding: 0; border: 0; }
+.choice { display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: start; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); color: var(--ink); cursor: pointer; }
+.choice:last-child { border-bottom: 1px solid var(--line); }
+.choice input, .applyRemaining input { width: 16px; height: 16px; margin: 1px 0 0; accent-color: var(--accent); }
+.choiceTitle, .choiceMeta { display: block; }
+.choiceTitle { font-size: 13.5px; font-weight: 600; line-height: 1.45; }
+.choiceMeta, .more { color: var(--muted); font-size: 12.5px; font-weight: 400; }
+.choiceMeta { margin-top: 2px; font-variant-numeric: tabular-nums; }
+.more { margin-left: 5px; }
+.applyRemaining { display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: start; gap: 10px; margin-top: 14px; color: var(--ink-2); font-size: 13px; line-height: 1.45; cursor: pointer; }
+.cancel { height: 34px; padding: 0 16px; border: 0; border-radius: 7px; background: transparent; color: var(--ink-2); font-size: 13.5px; font-weight: 500; white-space: nowrap; }
+.cancel:hover { background: var(--hover); }

@@ -1,0 +1,15 @@
+.shell {
+  height: 100%;
+  display: flex;
+  background: var(--app-bg);
+  color: var(--ink);
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  background: var(--surface);
+  overflow: hidden;
+}

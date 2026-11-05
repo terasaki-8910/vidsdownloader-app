@@ -1,0 +1,84 @@
+<!doctype html>
+<!-- Modeled on X search > Media (2026-11-03): tabs that won in collector v1, photo and video
+     tiles from many users (so no single user's post shape reaches three links; one user name
+     looks like an id), trends on the side, an ad tile. -->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>cats - 検索 / X</title>
+<style>
+  body { margin: 0; display: flex; font: 15px sans-serif; }
+  header[role="banner"] { width: 260px; flex: none; }
+  header a, aside a { display: block; padding: 12px; }
+  main { width: 600px; flex: none; }
+  [role="tab"] { display: inline-block; padding: 14px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 196px); gap: 4px; }
+  .cell { position: relative; width: 196px; height: 196px; }
+  .tile { position: absolute; inset: 0; display: block; }
+  .tile .bg { position: absolute; inset: 0; background: #cccccc; }
+  .tile img { position: absolute; inset: 0; width: 196px; height: 196px; opacity: 0; }
+  .label { position: absolute; left: 6px; bottom: 6px; font-size: 12px; }
+  aside { width: 350px; flex: none; }
+</style>
+</head>
+<body>
+<header role="banner">
+  <nav role="navigation" aria-label="Primary">
+    <a href="/home">ホーム</a>
+    <a href="/explore">話題を検索</a>
+    <a href="/notifications">通知</a>
+    <a href="/messages">メッセージ</a>
+    <a href="/me_account">プロフィール</a>
+  </nav>
+</header>
+<main role="main">
+  <nav role="navigation" aria-label="検索タイムライン">
+    <div role="tablist">
+      <a role="tab" href="/search?q=cats&src=typed_query">話題</a>
+      <a role="tab" href="/search?q=cats&src=typed_query&f=live">最新</a>
+      <a role="tab" href="/search?q=cats&src=typed_query&f=user">アカウント</a>
+      <a role="tab" href="/search?q=cats&src=typed_query&f=media">メディア</a>
+      <a role="tab" href="/search?q=cats&src=typed_query&f=list">リスト</a>
+    </div>
+  </nav>
+  <section aria-label="検索タイムライン"><div class="grid" id="grid"></div></section>
+</main>
+<aside aria-label="トレンド">
+  <a href="/search?q=%23weather&src=trend_click&vertical=trends">#weather</a>
+  <a href="/search?q=%23music&src=trend_click&vertical=trends">#music</a>
+  <a href="/search?q=%23games&src=trend_click&vertical=trends">#games</a>
+  <a href="/search?q=%23news&src=trend_click&vertical=trends">#news</a>
+  <a href="/search?q=%23food&src=trend_click&vertical=trends">#food</a>
+  <a href="/search?q=%23travel&src=trend_click&vertical=trends">#travel</a>
+</aside>
+<script>
+  const tiles = [
+    ["neko_lover", 1001, "photo"],
+    ["tama", 1002, "photo"],
+    ["neko_lover", 1003, "video"],
+    ["mike", 1004, "photo"],
+    ["kuro", 1005, "photo"],
+    ["shiro", 1006, "video"],
+    ["tama", 1007, "photo"],
+    ["brand_ad", 1008, "photo", true],
+    ["hana2025x", 1009, "photo"],
+    ["sora", 1010, "video"],
+    ["mike", 1011, "photo"],
+    ["kuro", 1012, "photo"],
+  ];
+  const grid = document.getElementById("grid");
+  for (const [user, id, kind, ad] of tiles) {
+    const cell = document.createElement("div");
+    cell.className = "cell";
+    cell.innerHTML =
+      `<a class="tile" href="/${user}/status/${id}/${kind}/1"><div class="bg"></div>` +
+      `<img src="/media/${id}.jpg" alt="画像"></a>` +
+      (kind === "video" ? `<span class="label">0:${10 + (id % 50)}</span>` : "") +
+      (ad ? `<span class="label">広告</span>` : "");
+    grid.appendChild(cell);
+  }
+</script>
+<script src="/collector.js"></script>
+<script src="/run-scan.js"></script>
+</body>
+</html>

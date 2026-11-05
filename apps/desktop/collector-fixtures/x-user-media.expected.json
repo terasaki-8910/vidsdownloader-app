@@ -1,0 +1,36 @@
+[
+  {
+    "shape": "/neko_lover/status/{num}/{any}/{num}",
+    "urls": [
+      "/neko_lover/status/2001/photo/1",
+      "/neko_lover/status/2002/photo/1",
+      "/neko_lover/status/2003/video/1",
+      "/neko_lover/status/2004/photo/1",
+      "/neko_lover/status/2005/photo/1",
+      "/neko_lover/status/2006/video/1",
+      "/neko_lover/status/2007/photo/1",
+      "/neko_lover/status/2008/video/1",
+      "/neko_lover/status/2009/photo/1",
+      "/neko_lover/status/2010/photo/1",
+      "/neko_lover/status/2011/video/1",
+      "/neko_lover/status/2012/photo/1",
+      "/neko_lover/status/2013/photo/1",
+      "/neko_lover/status/2014/video/1",
+      "/neko_lover/status/2015/photo/1"
+    ],
+    "ads": [],
+    "groupsInclude": ["/neko_lover/{any}"],
+    "groupsExclude": ["/home", "/{any}"]
+  },
+  {
+    "query": "shape=%2Fneko_lover%2Fstatus%2F%7Bnum%7D%2Fvideo%2F%7Bnum%7D",
+    "shape": "/neko_lover/status/{num}/video/{num}",
+    "urls": [
+      "/neko_lover/status/2003/video/1",
+      "/neko_lover/status/2006/video/1",
+      "/neko_lover/status/2008/video/1",
+      "/neko_lover/status/2011/video/1",
+      "/neko_lover/status/2014/video/1"
+    ]
+  }
+]

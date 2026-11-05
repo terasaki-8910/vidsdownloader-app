@@ -1,0 +1,1241 @@
+{
+  "generator": "yt-dlp 2026.07.04 prepare_filename on Windows",
+  "path_separator_note": "windows_path uses \"/\" between components; yt-dlp printed \"\\\\\"",
+  "cases": [
+    {
+      "name": "default_jst",
+      "template": {
+        "folders": [
+          [
+            {
+              "field": "uploader"
+            }
+          ]
+        ],
+        "file": [
+          {
+            "optional": {
+              "before": "",
+              "field": "date",
+              "after": " "
+            }
+          },
+          {
+            "field": "title"
+          },
+          {
+            "text": " ["
+          },
+          {
+            "field": "id"
+          },
+          {
+            "text": "]"
+          }
+        ]
+      },
+      "context": {
+        "tz_offset_seconds": 32400,
+        "site_name": "ニコニコ動画",
+        "title_budget_bytes": null
+      },
+      "info": {
+        "id": "sm9",
+        "title": "新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師",
+        "uploader": "中の",
+        "channel": "中の",
+        "uploader_id": "4",
+        "timestamp": 1173108780,
+        "upload_date": "20070305",
+        "extractor": "niconico",
+        "ext": "mp4"
+      },
+      "outtmpl": "%(uploader,channel,uploader_id|)s/%(timestamp+32400>%Y-%m-%d,upload_date>%Y-%m-%d&{} |)s%(title|)s [%(id|)s].%(ext)s",
+      "windows_path": "中の/2007-03-06 新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師 [sm9].mp4"
+    },
+    {
+      "name": "default_utc",
+      "template": {
+        "folders": [
+          [
+            {
+              "field": "uploader"
+            }
+          ]
+        ],
+        "file": [
+          {
+            "optional": {
+              "before": "",
+              "field": "date",
+              "after": " "
+            }
+          },
+          {
+            "field": "title"
+          },
+          {
+            "text": " ["
+          },
+          {
+            "field": "id"
+          },
+          {
+            "text": "]"
+          }
+        ]
+      },
+      "context": {
+        "tz_offset_seconds": 0,
+        "site_name": "ニコニコ動画",
+        "title_budget_bytes": null
+      },
+      "info": {
+        "id": "sm9",
+        "title": "新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師",
+        "uploader": "中の",
+        "channel": "中の",
+        "uploader_id": "4",
+        "timestamp": 1173108780,
+        "upload_date": "20070305",
+        "extractor": "niconico",
+        "ext": "mp4"
+      },
+      "outtmpl": "%(uploader,channel,uploader_id|)s/%(timestamp>%Y-%m-%d,upload_date>%Y-%m-%d&{} |)s%(title|)s [%(id|)s].%(ext)s",
+      "windows_path": "中の/2007-03-05 新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師 [sm9].mp4"
+    },
+    {
+      "name": "default_minus5h",
+      "template": {
+        "folders": [
+          [
+            {
+              "field": "uploader"
+            }
+          ]
+        ],
+        "file": [
+          {
+            "optional": {
+              "before": "",
+              "field": "date",
+              "after": " "
+            }
+          },
+          {
+            "field": "title"
+          },
+          {
+            "text": " ["
+          },
+          {
+            "field": "id"
+          },
+          {
+            "text": "]"
+          }
+        ]
+      },
+      "context": {
+        "tz_offset_seconds": -18000,
+        "site_name": "ニコニコ動画",
+        "title_budget_bytes": null
+      },
+      "info": {
+        "id": "sm9",
+        "title": "新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師",
+        "uploader": "中の",
+        "channel": "中の",
+        "uploader_id": "4",
+        "timestamp": 1173108780,
+        "upload_date": "20070305",
+        "extractor": "niconico",
+        "ext": "mp4"
+      },
+      "outtmpl": "%(uploader,channel,uploader_id|)s/%(timestamp-18000>%Y-%m-%d,upload_date>%Y-%m-%d&{} |)s%(title|)s [%(id|)s].%(ext)s",
+      "windows_path": "中の/2007-03-05 新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師 [sm9].mp4"
+    },
+    {
+      "name": "no_timestamp_uses_upload_date",
+      "template": {
+        "folders": [
+          [
+            {
+              "field": "uploader"
+            }
+          ]
+        ],
+        "file": [
+          {
+            "optional": {
+              "before": "",
+              "field": "date",
+              "after": " "
+            }
+          },
+          {
+            "field": "title"
+          },
+          {
+            "text": " ["
+          },
+          {
+            "field": "id"
+          },
+          {
+            "text": "]"
+          }
+        ]
+      },
+      "context": {
+        "tz_offset_seconds": 32400,
+        "site_name": "ニコニコ動画",
+        "title_budget_bytes": null
+      },
+      "info": {
+        "id": "sm9",
+        "title": "新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師",
+        "uploader": "中の",
+        "channel": "中の",
+        "uploader_id": "4",
+        "upload_date": "20070305",
+        "extractor": "niconico",
+        "ext": "mp4"
+      },
+      "outtmpl": "%(uploader,channel,uploader_id|)s/%(timestamp+32400>%Y-%m-%d,upload_date>%Y-%m-%d&{} |)s%(title|)s [%(id|)s].%(ext)s",
+      "windows_path": "中の/2007-03-05 新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師 [sm9].mp4"
+    },
+    {
+      "name": "no_date_drops_with_space",
+      "template": {
+        "folders": [
+          [
+            {
+              "field": "uploader"
+            }
+          ]
+        ],
+        "file": [
+          {
+            "optional": {
+              "before": "",
+              "field": "date",
+              "after": " "
+            }
+          },
+          {
+            "field": "title"
+          },
+          {
+            "text": " ["
+          },
+          {
+            "field": "id"
+          },
+          {
+            "text": "]"
+          }
+        ]
+      },
+      "context": {
+        "tz_offset_seconds": 32400,
+        "site_name": "ニコニコ動画",
+        "title_budget_bytes": null
+      },
+      "info": {
+        "id": "sm9",
+        "title": "新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師",
+        "uploader": "中の",
+        "channel": "中の",
+        "uploader_id": "4",
+        "extractor": "niconico",
+        "ext": "mp4"
+      },
+      "outtmpl": "%(uploader,channel,uploader_id|)s/%(timestamp+32400>%Y-%m-%d,upload_date>%Y-%m-%d&{} |)s%(title|)s [%(id|)s].%(ext)s",
+      "windows_path": "中の/新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師 [sm9].mp4"
+    },
+    {
+      "name": "slash_in_title",
+      "template": {
+        "folders": [
+          [
+            {
+              "field": "uploader"
+            }
+          ]
+        ],
+        "file": [
+          {
+            "optional": {
+              "before": "",
+              "field": "date",
+              "after": " "
+            }
+          },
+          {
+            "field": "title"
+          },
+          {
+            "text": " ["
+          },
+          {
+            "field": "id"
+          },
+          {
+            "text": "]"
+          }
+        ]
+      },
+      "context": {
+        "tz_offset_seconds": 32400,
+        "site_name": "ニコニコ動画",
+        "title_budget_bytes": null
+      },
+      "info": {
+        "id": "nl1872567",
+        "title": "【12/25放送分】『生対談!!ひろゆきと戀塚のニコニコを作った人 』前半",
+        "uploader": "nicolive",
+        "channel": "nicolive",
+        "timestamp": 1198637246,
+        "upload_date": "20071226",
+        "extractor": "niconico",
+        "ext": "mp4"
+      },
+      "outtmpl": "%(uploader,channel,uploader_id|)s/%(timestamp+32400>%Y-%m-%d,upload_date>%Y-%m-%d&{} |)s%(title|)s [%(id|)s].%(ext)s",
+      "windows_path": "nicolive/2007-12-26 【12⧸25放送分】『生対談!!ひろゆきと戀塚のニコニコを作った人 』前半 [nl1872567].mp4"
+    },
+    {
+      "name": "youtube",
+      "template": {
+        "folders": [
+          [
+            {
+              "field": "uploader"
+            }
+          ]
+        ],
+        "file": [
+          {
+            "optional": {
+              "before": "",
+              "field": "date",
+              "after": " "
+            }
+          },
+          {
+            "field": "title"
+          },
+          {
+            "text": " ["
+          },
+          {
+            "field": "id"
+          },
+          {
+            "text": "]"
+          }
+        ]
+      },
+      "context": {
+        "tz_offset_seconds": 32400,
+        "site_name": "YouTube",
+        "title_budget_bytes": null
+      },
+      "info": {
+        "id": "YE7VzlLtp-4",
+        "title": "Big Buck Bunny",
+        "uploader": "Blender",
+        "channel": "Blender",
+        "uploader_id": "@BlenderOfficial",
+        "timestamp": 1212060266,
+        "upload_date": "20080529",
+        "extractor": "youtube",
+        "ext": "mp4"
+      },
+      "outtmpl": "%(uploader,channel,uploader_id|)s/%(timestamp+32400>%Y-%m-%d,upload_date>%Y-%m-%d&{} |)s%(title|)s [%(id|)s].%(ext)s",
+      "windows_path": "Blender/2008-05-29 Big Buck Bunny [YE7VzlLtp-4].mp4"
+    },
+    {
+      "name": "site_folder",
+      "template": {
+        "folders": [
+          [
+            {
+              "field": "site"
+            }
+          ],
+          [
+            {
+              "field": "uploader"
+            }
+          ]
+        ],
+        "file": [
+          {
+            "optional": {
+              "before": "",
+              "field": "date",
+              "after": " "
+            }
+          },
+          {
+            "field": "title"
+          },
+          {
+            "text": " ["
+          },
+          {
+            "field": "id"
+          },
+          {
+            "text": "]"
+          }
+        ]
+      },
+      "context": {
+        "tz_offset_seconds": 32400,
+        "site_name": "ニコニコ動画",
+        "title_budget_bytes": null
+      },
+      "info": {
+        "id": "sm9",
+        "title": "新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師",
+        "uploader": "中の",
+        "channel": "中の",
+        "uploader_id": "4",
+        "timestamp": 1173108780,
+        "upload_date": "20070305",
+        "extractor": "niconico",
+        "ext": "mp4"
+      },
+      "outtmpl": "ニコニコ動画/%(uploader,channel,uploader_id|)s/%(timestamp+32400>%Y-%m-%d,upload_date>%Y-%m-%d&{} |)s%(title|)s [%(id|)s].%(ext)s",
+      "windows_path": "ニコニコ動画/中の/2007-03-06 新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師 [sm9].mp4"
+    },
+    {
+      "name": "flat",
+      "template": {
+        "folders": [],
+        "file": [
+          {
+            "optional": {
+              "before": "",
+              "field": "date",
+              "after": " "
+            }
+          },
+          {
+            "field": "title"
+          },
+          {
+            "text": " ["
+          },
+          {
+            "field": "id"
+          },
+          {
+            "text": "]"
+          }
+        ]
+      },
+      "context": {
+        "tz_offset_seconds": 32400,
+        "site_name": "ニコニコ動画",
+        "title_budget_bytes": null
+      },
+      "info": {
+        "id": "sm9",
+        "title": "新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師",
+        "uploader": "中の",
+        "channel": "中の",
+        "uploader_id": "4",
+        "timestamp": 1173108780,
+        "upload_date": "20070305",
+        "extractor": "niconico",
+        "ext": "mp4"
+      },
+      "outtmpl": "%(timestamp+32400>%Y-%m-%d,upload_date>%Y-%m-%d&{} |)s%(title|)s [%(id|)s].%(ext)s",
+      "windows_path": "2007-03-06 新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師 [sm9].mp4"
+    },
+    {
+      "name": "forbidden_chars",
+      "template": {
+        "folders": [],
+        "file": [
+          {
+            "optional": {
+              "before": "",
+              "field": "date",
+              "after": " "
+            }
+          },
+          {
+            "field": "title"
+          },
+          {
+            "text": " ["
+          },
+          {
+            "field": "id"
+          },
+          {
+            "text": "]"
+          }
+        ]
+      },
+      "context": {
+        "tz_offset_seconds": 32400,
+        "site_name": "ニコニコ動画",
+        "title_budget_bytes": null
+      },
+      "info": {
+        "id": "sm9",
+        "title": "a\"b*c:d<e>f?g|h/i\\j",
+        "uploader": "中の",
+        "channel": "中の",
+        "uploader_id": "4",
+        "timestamp": 1173108780,
+        "upload_date": "20070305",
+        "extractor": "niconico",
+        "ext": "mp4"
+      },
+      "outtmpl": "%(timestamp+32400>%Y-%m-%d,upload_date>%Y-%m-%d&{} |)s%(title|)s [%(id|)s].%(ext)s",
+      "windows_path": "2007-03-06 a＂b＊c：d＜e＞f？g｜h⧸i⧹j [sm9].mp4"
+    },
+    {
+      "name": "clock_time_colon",
+      "template": {
+        "folders": [],
+        "file": [
+          {
+            "optional": {
+              "before": "",
+              "field": "date",
+              "after": " "
+            }
+          },
+          {
+            "field": "title"
+          },
+          {
+            "text": " ["
+          },
+          {
+            "field": "id"
+          },
+          {
+            "text": "]"
+          }
+        ]
+      },
+      "context": {
+        "tz_offset_seconds": 32400,
+        "site_name": "ニコニコ動画",
+        "title_budget_bytes": null
+      },
+      "info": {
+        "id": "sm9",
+        "title": "Live 12:30 start, ratio a:b",
+        "uploader": "中の",
+        "channel": "中の",
+        "uploader_id": "4",
+        "timestamp": 1173108780,
+        "upload_date": "20070305",
+        "extractor": "niconico",
+        "ext": "mp4"
+      },
+      "outtmpl": "%(timestamp+32400>%Y-%m-%d,upload_date>%Y-%m-%d&{} |)s%(title|)s [%(id|)s].%(ext)s",
+      "windows_path": "2007-03-06 Live 12_30 start, ratio a：b [sm9].mp4"
+    },
+    {
+      "name": "newline_and_control",
+      "template": {
+        "folders": [],
+        "file": [
+          {
+            "optional": {
+              "before": "",
+              "field": "date",
+              "after": " "
+            }
+          },
+          {
+            "field": "title"
+          },
+          {
+            "text": " ["
+          },
+          {
+            "field": "id"
+          },
+          {
+            "text": "]"
+          }
+        ]
+      },
+      "context": {
+        "tz_offset_seconds": 32400,
+        "site_name": "ニコニコ動画",
+        "title_budget_bytes": null
+      },
+      "info": {
+        "id": "sm9",
+        "title": "line1\nline2\u0007end",
+        "uploader": "中の",
+        "channel": "中の",
+        "uploader_id": "4",
+        "timestamp": 1173108780,
+        "upload_date": "20070305",
+        "extractor": "niconico",
+        "ext": "mp4"
+      },
+      "outtmpl": "%(timestamp+32400>%Y-%m-%d,upload_date>%Y-%m-%d&{} |)s%(title|)s [%(id|)s].%(ext)s",
+      "windows_path": "2007-03-06 line1 line2end [sm9].mp4"
+    },
+    {
+      "name": "emoji",
+      "template": {
+        "folders": [],
+        "file": [
+          {
+            "optional": {
+              "before": "",
+              "field": "date",
+              "after": " "
+            }
+          },
+          {
+            "field": "title"
+          },
+          {
+            "text": " ["
+          },
+          {
+            "field": "id"
+          },
+          {
+            "text": "]"
+          }
+        ]
+      },
+      "context": {
+        "tz_offset_seconds": 32400,
+        "site_name": "ニコニコ動画",
+        "title_budget_bytes": null
+      },
+      "info": {
+        "id": "sm9",
+        "title": "テスト🎬動画",
+        "uploader": "中の",
+        "channel": "中の",
+        "uploader_id": "4",
+        "timestamp": 1173108780,
+        "upload_date": "20070305",
+        "extractor": "niconico",
+        "ext": "mp4"
+      },
+      "outtmpl": "%(timestamp+32400>%Y-%m-%d,upload_date>%Y-%m-%d&{} |)s%(title|)s [%(id|)s].%(ext)s",
+      "windows_path": "2007-03-06 テスト🎬動画 [sm9].mp4"
+    },
+    {
+      "name": "budget_60_bytes",
+      "template": {
+        "folders": [
+          [
+            {
+              "field": "uploader"
+            }
+          ]
+        ],
+        "file": [
+          {
+            "optional": {
+              "before": "",
+              "field": "date",
+              "after": " "
+            }
+          },
+          {
+            "field": "title"
+          },
+          {
+            "text": " ["
+          },
+          {
+            "field": "id"
+          },
+          {
+            "text": "]"
+          }
+        ]
+      },
+      "context": {
+        "tz_offset_seconds": 32400,
+        "site_name": "ニコニコ動画",
+        "title_budget_bytes": 60
+      },
+      "info": {
+        "id": "sm9",
+        "title": "新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師",
+        "uploader": "中の",
+        "channel": "中の",
+        "uploader_id": "4",
+        "timestamp": 1173108780,
+        "upload_date": "20070305",
+        "extractor": "niconico",
+        "ext": "mp4"
+      },
+      "outtmpl": "%(uploader,channel,uploader_id|)s/%(timestamp+32400>%Y-%m-%d,upload_date>%Y-%m-%d&{} |)s%(title|).60B [%(id|)s].%(ext)s",
+      "windows_path": "中の/2007-03-06 新・豪血寺一族 -煩悩解放 - レッツゴー！陰 [sm9].mp4"
+    },
+    {
+      "name": "budget_splits_multibyte",
+      "template": {
+        "folders": [],
+        "file": [
+          {
+            "optional": {
+              "before": "",
+              "field": "date",
+              "after": " "
+            }
+          },
+          {
+            "field": "title"
+          },
+          {
+            "text": " ["
+          },
+          {
+            "field": "id"
+          },
+          {
+            "text": "]"
+          }
+        ]
+      },
+      "context": {
+        "tz_offset_seconds": 32400,
+        "site_name": "ニコニコ動画",
+        "title_budget_bytes": 8
+      },
+      "info": {
+        "id": "sm9",
+        "title": "あいうえお",
+        "uploader": "中の",
+        "channel": "中の",
+        "uploader_id": "4",
+        "timestamp": 1173108780,
+        "upload_date": "20070305",
+        "extractor": "niconico",
+        "ext": "mp4"
+      },
+      "outtmpl": "%(timestamp+32400>%Y-%m-%d,upload_date>%Y-%m-%d&{} |)s%(title|).8B [%(id|)s].%(ext)s",
+      "windows_path": "2007-03-06 あい [sm9].mp4"
+    },
+    {
+      "name": "budget_ascii",
+      "template": {
+        "folders": [],
+        "file": [
+          {
+            "optional": {
+              "before": "",
+              "field": "date",
+              "after": " "
+            }
+          },
+          {
+            "field": "title"
+          },
+          {
+            "text": " ["
+          },
+          {
+            "field": "id"
+          },
+          {
+            "text": "]"
+          }
+        ]
+      },
+      "context": {
+        "tz_offset_seconds": 32400,
+        "site_name": "ニコニコ動画",
+        "title_budget_bytes": 10
+      },
+      "info": {
+        "id": "sm9",
+        "title": "abcdefghijklmnopqrstuvwxyz",
+        "uploader": "中の",
+        "channel": "中の",
+        "uploader_id": "4",
+        "timestamp": 1173108780,
+        "upload_date": "20070305",
+        "extractor": "niconico",
+        "ext": "mp4"
+      },
+      "outtmpl": "%(timestamp+32400>%Y-%m-%d,upload_date>%Y-%m-%d&{} |)s%(title|).10B [%(id|)s].%(ext)s",
+      "windows_path": "2007-03-06 abcdefghij [sm9].mp4"
+    },
+    {
+      "name": "budget_counts_raw_bytes",
+      "template": {
+        "folders": [],
+        "file": [
+          {
+            "optional": {
+              "before": "",
+              "field": "date",
+              "after": " "
+            }
+          },
+          {
+            "field": "title"
+          },
+          {
+            "text": " ["
+          },
+          {
+            "field": "id"
+          },
+          {
+            "text": "]"
+          }
+        ]
+      },
+      "context": {
+        "tz_offset_seconds": 32400,
+        "site_name": "ニコニコ動画",
+        "title_budget_bytes": 12
+      },
+      "info": {
+        "id": "sm9",
+        "title": "12/25/2007 special",
+        "uploader": "中の",
+        "channel": "中の",
+        "uploader_id": "4",
+        "timestamp": 1173108780,
+        "upload_date": "20070305",
+        "extractor": "niconico",
+        "ext": "mp4"
+      },
+      "outtmpl": "%(timestamp+32400>%Y-%m-%d,upload_date>%Y-%m-%d&{} |)s%(title|).12B [%(id|)s].%(ext)s",
+      "windows_path": "2007-03-06 12⧸25⧸2007 s [sm9].mp4"
+    },
+    {
+      "name": "episode_present",
+      "template": {
+        "folders": [],
+        "file": [
+          {
+            "field": "title"
+          },
+          {
+            "optional": {
+              "before": " - ",
+              "field": "episode",
+              "after": ""
+            }
+          },
+          {
+            "text": " ["
+          },
+          {
+            "field": "id"
+          },
+          {
+            "text": "]"
+          }
+        ]
+      },
+      "context": {
+        "tz_offset_seconds": 32400,
+        "site_name": "ニコニコ動画",
+        "title_budget_bytes": null
+      },
+      "info": {
+        "id": "sm9",
+        "title": "新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師",
+        "uploader": "中の",
+        "channel": "中の",
+        "uploader_id": "4",
+        "timestamp": 1173108780,
+        "upload_date": "20070305",
+        "extractor": "niconico",
+        "ext": "mp4",
+        "episode": "第1話 はじまり"
+      },
+      "outtmpl": "%(title|)s%(episode& - {}|)s [%(id|)s].%(ext)s",
+      "windows_path": "新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師 - 第1話 はじまり [sm9].mp4"
+    },
+    {
+      "name": "episode_absent",
+      "template": {
+        "folders": [],
+        "file": [
+          {
+            "field": "title"
+          },
+          {
+            "optional": {
+              "before": " - ",
+              "field": "episode",
+              "after": ""
+            }
+          },
+          {
+            "text": " ["
+          },
+          {
+            "field": "id"
+          },
+          {
+            "text": "]"
+          }
+        ]
+      },
+      "context": {
+        "tz_offset_seconds": 32400,
+        "site_name": "ニコニコ動画",
+        "title_budget_bytes": null
+      },
+      "info": {
+        "id": "sm9",
+        "title": "新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師",
+        "uploader": "中の",
+        "channel": "中の",
+        "uploader_id": "4",
+        "timestamp": 1173108780,
+        "upload_date": "20070305",
+        "extractor": "niconico",
+        "ext": "mp4"
+      },
+      "outtmpl": "%(title|)s%(episode& - {}|)s [%(id|)s].%(ext)s",
+      "windows_path": "新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師 [sm9].mp4"
+    },
+    {
+      "name": "uploader_falls_back_to_channel",
+      "template": {
+        "folders": [
+          [
+            {
+              "field": "uploader"
+            }
+          ]
+        ],
+        "file": [
+          {
+            "optional": {
+              "before": "",
+              "field": "date",
+              "after": " "
+            }
+          },
+          {
+            "field": "title"
+          },
+          {
+            "text": " ["
+          },
+          {
+            "field": "id"
+          },
+          {
+            "text": "]"
+          }
+        ]
+      },
+      "context": {
+        "tz_offset_seconds": 32400,
+        "site_name": "ニコニコ動画",
+        "title_budget_bytes": null
+      },
+      "info": {
+        "id": "sm9",
+        "title": "新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師",
+        "channel": "チャンネル名",
+        "uploader_id": "4",
+        "timestamp": 1173108780,
+        "upload_date": "20070305",
+        "extractor": "niconico",
+        "ext": "mp4"
+      },
+      "outtmpl": "%(uploader,channel,uploader_id|)s/%(timestamp+32400>%Y-%m-%d,upload_date>%Y-%m-%d&{} |)s%(title|)s [%(id|)s].%(ext)s",
+      "windows_path": "チャンネル名/2007-03-06 新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師 [sm9].mp4"
+    },
+    {
+      "name": "uploader_falls_back_to_id",
+      "template": {
+        "folders": [
+          [
+            {
+              "field": "uploader"
+            }
+          ]
+        ],
+        "file": [
+          {
+            "optional": {
+              "before": "",
+              "field": "date",
+              "after": " "
+            }
+          },
+          {
+            "field": "title"
+          },
+          {
+            "text": " ["
+          },
+          {
+            "field": "id"
+          },
+          {
+            "text": "]"
+          }
+        ]
+      },
+      "context": {
+        "tz_offset_seconds": 32400,
+        "site_name": "ニコニコ動画",
+        "title_budget_bytes": null
+      },
+      "info": {
+        "id": "sm9",
+        "title": "新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師",
+        "uploader_id": "4",
+        "timestamp": 1173108780,
+        "upload_date": "20070305",
+        "extractor": "niconico",
+        "ext": "mp4"
+      },
+      "outtmpl": "%(uploader,channel,uploader_id|)s/%(timestamp+32400>%Y-%m-%d,upload_date>%Y-%m-%d&{} |)s%(title|)s [%(id|)s].%(ext)s",
+      "windows_path": "4/2007-03-06 新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師 [sm9].mp4"
+    },
+    {
+      "name": "no_uploader_no_folder",
+      "template": {
+        "folders": [
+          [
+            {
+              "field": "uploader"
+            }
+          ]
+        ],
+        "file": [
+          {
+            "optional": {
+              "before": "",
+              "field": "date",
+              "after": " "
+            }
+          },
+          {
+            "field": "title"
+          },
+          {
+            "text": " ["
+          },
+          {
+            "field": "id"
+          },
+          {
+            "text": "]"
+          }
+        ]
+      },
+      "context": {
+        "tz_offset_seconds": 32400,
+        "site_name": "ニコニコ動画",
+        "title_budget_bytes": null
+      },
+      "info": {
+        "id": "sm9",
+        "title": "新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師",
+        "timestamp": 1173108780,
+        "upload_date": "20070305",
+        "extractor": "niconico",
+        "ext": "mp4"
+      },
+      "outtmpl": "%(timestamp+32400>%Y-%m-%d,upload_date>%Y-%m-%d&{} |)s%(title|)s [%(id|)s].%(ext)s",
+      "windows_path": "2007-03-06 新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師 [sm9].mp4"
+    },
+    {
+      "name": "literal_percent",
+      "template": {
+        "folders": [],
+        "file": [
+          {
+            "text": "100% "
+          },
+          {
+            "field": "title"
+          }
+        ]
+      },
+      "context": {
+        "tz_offset_seconds": 32400,
+        "site_name": "ニコニコ動画",
+        "title_budget_bytes": null
+      },
+      "info": {
+        "id": "sm9",
+        "title": "新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師",
+        "uploader": "中の",
+        "channel": "中の",
+        "uploader_id": "4",
+        "timestamp": 1173108780,
+        "upload_date": "20070305",
+        "extractor": "niconico",
+        "ext": "mp4"
+      },
+      "outtmpl": "100%% %(title|)s.%(ext)s",
+      "windows_path": "100% 新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師.mp4"
+    },
+    {
+      "name": "series_and_episode_number",
+      "template": {
+        "folders": [
+          [
+            {
+              "optional": {
+                "before": "",
+                "field": "series",
+                "after": ""
+              }
+            }
+          ]
+        ],
+        "file": [
+          {
+            "optional": {
+              "before": "第",
+              "field": "episode_number",
+              "after": "話 "
+            }
+          },
+          {
+            "field": "title"
+          }
+        ]
+      },
+      "context": {
+        "tz_offset_seconds": 32400,
+        "site_name": "ニコニコ動画",
+        "title_budget_bytes": null
+      },
+      "info": {
+        "id": "sm9",
+        "title": "新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師",
+        "uploader": "中の",
+        "channel": "中の",
+        "uploader_id": "4",
+        "timestamp": 1173108780,
+        "upload_date": "20070305",
+        "extractor": "niconico",
+        "ext": "mp4",
+        "series": "シリーズ名",
+        "episode_number": 3
+      },
+      "outtmpl": "%(series&{}|)s/%(episode_number&第{}話 |)s%(title|)s.%(ext)s",
+      "windows_path": "シリーズ名/第3話 新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師.mp4"
+    },
+    {
+      "name": "series_missing",
+      "template": {
+        "folders": [
+          [
+            {
+              "optional": {
+                "before": "",
+                "field": "series",
+                "after": ""
+              }
+            }
+          ]
+        ],
+        "file": [
+          {
+            "optional": {
+              "before": "第",
+              "field": "episode_number",
+              "after": "話 "
+            }
+          },
+          {
+            "field": "title"
+          }
+        ]
+      },
+      "context": {
+        "tz_offset_seconds": 32400,
+        "site_name": "ニコニコ動画",
+        "title_budget_bytes": null
+      },
+      "info": {
+        "id": "sm9",
+        "title": "新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師",
+        "uploader": "中の",
+        "channel": "中の",
+        "uploader_id": "4",
+        "timestamp": 1173108780,
+        "upload_date": "20070305",
+        "extractor": "niconico",
+        "ext": "mp4"
+      },
+      "outtmpl": "%(episode_number&第{}話 |)s%(title|)s.%(ext)s",
+      "windows_path": "新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師.mp4"
+    },
+    {
+      "name": "folder_trailing_dot_windows",
+      "template": {
+        "folders": [
+          [
+            {
+              "field": "uploader"
+            }
+          ]
+        ],
+        "file": [
+          {
+            "optional": {
+              "before": "",
+              "field": "date",
+              "after": " "
+            }
+          },
+          {
+            "field": "title"
+          },
+          {
+            "text": " ["
+          },
+          {
+            "field": "id"
+          },
+          {
+            "text": "]"
+          }
+        ]
+      },
+      "context": {
+        "tz_offset_seconds": 32400,
+        "site_name": "ニコニコ動画",
+        "title_budget_bytes": null
+      },
+      "info": {
+        "id": "sm9",
+        "title": "新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師",
+        "uploader": "Mr. Dot.",
+        "channel": "中の",
+        "uploader_id": "4",
+        "timestamp": 1173108780,
+        "upload_date": "20070305",
+        "extractor": "niconico",
+        "ext": "mp4"
+      },
+      "outtmpl": "%(uploader,channel,uploader_id|)s/%(timestamp+32400>%Y-%m-%d,upload_date>%Y-%m-%d&{} |)s%(title|)s [%(id|)s].%(ext)s",
+      "windows_path": "Mr. Dot#/2007-03-06 新・豪血寺一族 -煩悩解放 - レッツゴー！陰陽師 [sm9].mp4"
+    }
+  ]
+}

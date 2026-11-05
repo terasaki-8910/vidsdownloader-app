@@ -1,0 +1,48 @@
+.banner {
+  margin: 10px 28px 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 6px 6px 6px 12px;
+  border-radius: 9px;
+  background: var(--accent-fill);
+  font-size: 13px;
+}
+
+.icon {
+  flex: none;
+  color: var(--accent-ink);
+}
+
+.message {
+  white-space: nowrap;
+  color: var(--ink);
+}
+
+.url {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--ink-2);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.addButton {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  white-space: nowrap;
+  flex: none;
+}
+
+.addButton:hover {
+  background: var(--hover);
+}

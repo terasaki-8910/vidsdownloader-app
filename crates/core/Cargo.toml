@@ -1,0 +1,36 @@
+[package]
+name = "vids-core"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Core logic of vidsdownloader: naming, filters, comments, and (later) tools, jobs and storage. No UI."
+
+[lib]
+name = "vids_core"
+
+[dependencies]
+hex = "0.4.3"
+quick-xml = "0.42.0"
+regex = "1.13.1"
+rusqlite = { version = "0.41.1", features = ["bundled"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11.1"
+thiserror = "2.0.21"
+time = { version = "0.3.55", features = ["formatting", "macros"] }
+tokio = { version = "1.54.1", features = ["process", "io-util", "rt", "rt-multi-thread", "macros", "sync", "time"] }
+ureq = "3.5.0"
+url = "2.5.8"
+zip = { version = "9.2.2", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+proptest = "1.12.0"
+tempfile = "3.27.0"
+tiny_http = "0.12.0"
+
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_Security", "Win32_System_Diagnostics_ToolHelp"] }
+
+[target."cfg(unix)".dependencies]
+libc = "0.2.191"

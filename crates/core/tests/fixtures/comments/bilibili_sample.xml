@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Sample danmaku written by hand for tests (not real comments). p = "time_s,mode,size,color,timestamp,pool,user,rowid" -->
+<i>
+  <chatserver>chat.bilibili.com</chatserver>
+  <chatid>0</chatid>
+  <d p="0.50000,1,25,16777215,1700000000,0,a1b2c3d4,1001">见本弹幕</d>
+  <d p="1.20000,5,25,16711680,1700000001,0,a1b2c3d5,1002">上に固定</d>
+  <d p="2.00000,4,25,65280,1700000002,0,a1b2c3d6,1003">下に固定</d>
+  <d p="2.40000,1,36,16776960,1700000003,0,a1b2c3d7,1004">大きいコメント</d>
+  <d p="3.10000,1,18,16777215,1700000004,0,a1b2c3d8,1005">小さいコメント</d>
+  <d p="3.50000,7,25,16777215,1700000005,0,a1b2c3d9,1006">[0,0,"1-1",4.5,"positioned"]</d>
+  <d p="4.00000,1,25,16777215,1700000006,0,a1b2c3e0,1007">A &amp; B &lt;tag&gt;</d>
+</i>

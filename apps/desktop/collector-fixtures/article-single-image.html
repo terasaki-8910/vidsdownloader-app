@@ -1,0 +1,48 @@
+<!doctype html>
+<!-- A generic post with a single image of its own and a short list of text links: the page
+     images group exists from one image up and, holding media, ranks above the text links.
+     Page facts come from the fallbacks: no og:title (the document title), a JSON-LD author
+     given only as an @id reference to a Person node, and article:published_time instead of a
+     JSON-LD datePublished. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Notes on a quiet week</title>
+<meta property="article:author" content="https://example.test/people/rowan">
+<meta property="article:published_time" content="2026-11-02T08:30:00Z">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    { "@type": "BlogPosting", "headline": "Notes on a quiet week", "author": { "@id": "#rowan" } },
+    { "@type": "Person", "@id": "#rowan", "name": "Rowan Hale" }
+  ]
+}
+</script>
+<style>
+  body { margin: 0; font: 16px/1.6 serif; }
+  main { width: 680px; margin: 0 auto; }
+  article img { display: block; }
+  .more a { display: block; padding: 4px 0; }
+</style>
+</head>
+<body>
+<main>
+  <article>
+    <h1>Notes on a quiet week</h1>
+    <p>A few lines about a week with nothing much in it, which turned out to be the point.</p>
+    <img src="/media/quiet-week.jpg" width="680" height="380" alt="A window in the rain">
+    <p>More lines, long enough to make the article a real block of text on the page.</p>
+  </article>
+  <section class="more">
+    <h2>More notes</h2>
+    <a href="/notes/a-long-walk">A long walk</a>
+    <a href="/notes/bread-again">Bread again</a>
+    <a href="/notes/the-last-tomatoes">The last tomatoes</a>
+    <a href="/notes/letters">Letters</a>
+  </section>
+</main>
+<script src="/collector.js"></script>
+<script src="/run-scan.js"></script>
+</body>
+</html>

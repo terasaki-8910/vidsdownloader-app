@@ -1,0 +1,55 @@
+/* The Notifications group in Settings > General: a heading, one-line switch rows, a note. */
+.group {
+  display: grid;
+  gap: 8px;
+  /* A separate task from the fields above it, like the add-a-site form: a little more air. */
+  margin-top: 10px;
+}
+
+.group p {
+  margin: 0;
+}
+
+/* Settings has no subsection heading (its sections are flat lists of labelled fields), so
+   this is the section-title step of the type scale: 15px semibold, as the add-a-site form's. */
+.heading {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+
+/* One line each, the switch at the right edge: the same shape as the ad-block rows. */
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Switch aligns itself to the start of a flex container; center it in the row instead. */
+.row button {
+  align-self: center;
+}
+
+.label {
+  min-width: 0;
+  font-size: 13.5px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* Disabled by the master switch: the label drops from ink to muted (still above 4.5:1 on the
+   surface in both themes) and the switch itself dims; the rows stay in place. */
+.labelOff {
+  color: var(--muted);
+}

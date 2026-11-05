@@ -1,0 +1,173 @@
+/* The update dialog. The frame, title, body text and the tinted あとで / 閉じる button come from
+   ConfirmDialog.module.css; everything here is what that file does not have. */
+
+/* The version line: the new version is the point, the running one is context. */
+.version {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.current {
+  color: var(--ink-2);
+}
+
+.notesHeading {
+  margin: 18px 0 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+/* The notes scroll inside the dialog once they are longer than about seven lines; the rules
+   above and below appear only then, so a short list is not boxed in. */
+.notes {
+  max-height: 160px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  gap: 6px;
+}
+
+.notes.scrolls {
+  padding: 8px 8px 8px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.list li,
+.paragraph {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink);
+  word-break: auto-phrase;
+  overflow-wrap: anywhere;
+}
+
+.paragraph {
+  margin: 0;
+}
+
+.list li {
+  position: relative;
+  padding-left: 14px;
+}
+
+/* A small dot in the line's own first line, not a browser bullet. */
+.list li::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 0.78em;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.footer {
+  margin-top: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* The one that is almost never wanted: the quietest control, a text link at the far left. */
+.skip {
+  margin-right: auto;
+  height: 34px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+
+.skip:hover {
+  color: var(--ink);
+  text-decoration-color: currentColor;
+}
+
+/* The app's primary button (BrowserView), at ConfirmDialog's button size. */
+.primary {
+  height: 34px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.primary:hover:not([aria-disabled="true"]) {
+  filter: brightness(0.97);
+}
+
+.primary[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.busy {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  word-break: auto-phrase;
+}
+
+.progress {
+  margin-top: 18px;
+  display: grid;
+  gap: 8px;
+}
+
+/* Only a programmatic focus target (the buttons are gone); it is not a tab stop. */
+.progress:focus {
+  outline: none;
+}
+
+.status {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.figures {
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.after {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  word-break: auto-phrase;
+}
+
+/* A failed update: one line in the danger color; a long message (a URL) wraps anywhere. */
+.error {
+  margin: 18px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}

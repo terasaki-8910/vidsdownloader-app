@@ -1,0 +1,68 @@
+<!doctype html>
+<!-- Modeled on a YouTube home grid: video cards (thumbnail link, channel avatar, title link,
+     channel link), a Shorts shelf, the guide menu, and a sponsored card. -->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>YouTube</title>
+<style>
+  body { margin: 0; font: 14px sans-serif; }
+  #masthead { height: 56px; }
+  #guide { position: fixed; top: 56px; left: 0; width: 240px; }
+  #guide a { display: block; padding: 10px 24px; }
+  main { margin-left: 240px; width: 1020px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 330px); gap: 16px; }
+  .card { width: 330px; }
+  .thumb { display: block; position: relative; }
+  .thumb img { display: block; width: 320px; height: 180px; }
+  .time { position: absolute; right: 4px; bottom: 4px; }
+  .meta { display: flex; gap: 12px; padding-top: 12px; }
+  .meta .avatar img { display: block; width: 36px; height: 36px; border-radius: 50%; }
+  .shelf { display: flex; gap: 8px; padding: 24px 0; }
+  .short img { display: block; width: 200px; height: 355px; }
+</style>
+</head>
+<body>
+<div id="masthead"><a href="/">YouTube</a></div>
+<nav id="guide" aria-label="ガイド">
+  <a href="/">ホーム</a>
+  <a href="/shorts">ショート</a>
+  <a href="/feed/subscriptions">登録チャンネル</a>
+  <a href="/feed/history">履歴</a>
+  <a href="/playlist?list=WL">後で見る</a>
+</nav>
+<main>
+  <div class="grid" id="grid"></div>
+  <section class="shelf" id="shelf"><h2>ショート</h2></section>
+</main>
+<script>
+  const grid = document.getElementById("grid");
+  for (let n = 1; n <= 13; n += 1) {
+    const sponsored = n === 3;
+    const id = sponsored ? "AD9xYzW7v5u" : `v${String(n).padStart(2, "0")}AbCdEfGh`;
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML =
+      `<a class="thumb" href="/watch?v=${id}"><img src="/vi/${id}/hq.jpg" alt=""><span class="time">12:${10 + n}</span></a>` +
+      `<div class="meta"><a class="avatar" href="/@chan${n}"><img src="/yt3/chan${n}.jpg" alt=""></a><div>` +
+      `<a class="title" href="/watch?v=${id}">動画のタイトル その ${n} と少し長い説明</a>` +
+      `<div><a href="/@chan${n}">チャンネル ${n}</a></div>` +
+      (sponsored ? `<div><span>スポンサー</span></div>` : `<div>1.2万 回視聴 · ${n} 日前</div>`) +
+      `</div></div>`;
+    grid.appendChild(card);
+  }
+  const shelf = document.getElementById("shelf");
+  for (let n = 1; n <= 4; n += 1) {
+    const id = `s${String(n).padStart(2, "0")}AbCdEfGh`;
+    const item = document.createElement("div");
+    item.className = "short";
+    item.innerHTML =
+      `<a href="/shorts/${id}"><img src="/vi/${id}/frame.jpg" alt=""></a>` +
+      `<a href="/shorts/${id}">ショート動画 その ${n}</a>`;
+    shelf.appendChild(item);
+  }
+</script>
+<script src="/collector.js"></script>
+<script src="/run-scan.js"></script>
+</body>
+</html>

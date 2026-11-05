@@ -1,0 +1,83 @@
+/* The one-time import card above the browser's site list. Surface, border and radius are
+   the URL bar box's (UrlBar .urlbar); 16px padding, 12px between title, body and the row. */
+.card {
+  max-width: 720px;
+  margin: 0 0 24px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--surface);
+}
+
+.title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Tinted like the ログイン buttons, not the solid primary: a one-time, optional offer
+   should not be the loudest thing on the page. */
+.importButton {
+  height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--accent-fill);
+  color: var(--accent-ink);
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.importButton:hover:not(:disabled) {
+  filter: brightness(0.97);
+}
+
+.importButton:disabled {
+  opacity: 0.6;
+}
+
+/* A text button: no fill, no border; the hover tint is the app's. */
+.textButton {
+  height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 13.5px;
+  white-space: nowrap;
+}
+
+.textButton:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.textButton:disabled {
+  opacity: 0.6;
+}
+
+.error {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}

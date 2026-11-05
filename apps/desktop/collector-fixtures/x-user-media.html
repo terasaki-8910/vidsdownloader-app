@@ -1,0 +1,63 @@
+<!doctype html>
+<!-- Modeled on an X user's Media tab, which collector v1 already handled: one user, photo and
+     video tiles, a profile header with a large banner and avatar, and the profile tabs. -->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>ねこ (@neko_lover) / X</title>
+<style>
+  body { margin: 0; display: flex; font: 15px sans-serif; }
+  header[role="banner"] { width: 260px; flex: none; }
+  header a { display: block; padding: 12px; }
+  main { width: 600px; flex: none; }
+  .profile a { display: inline-block; }
+  .banner img { display: block; width: 600px; height: 200px; }
+  .avatar img { display: block; width: 133px; height: 133px; border-radius: 50%; }
+  [role="tab"] { display: inline-block; padding: 14px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 196px); gap: 4px; }
+  .cell { position: relative; width: 196px; height: 196px; }
+  .tile { position: absolute; inset: 0; display: block; }
+  .tile img { position: absolute; inset: 0; width: 196px; height: 196px; }
+</style>
+</head>
+<body>
+<header role="banner">
+  <nav role="navigation" aria-label="Primary">
+    <a href="/home">ホーム</a>
+    <a href="/explore">話題を検索</a>
+    <a href="/notifications">通知</a>
+    <a href="/me_account">プロフィール</a>
+  </nav>
+</header>
+<main role="main">
+  <div class="profile">
+    <a class="banner" href="/neko_lover/header_photo"><img src="/profile_banners/neko.jpg" alt=""></a>
+    <a class="avatar" href="/neko_lover/photo"><img src="/profile_images/neko.jpg" alt=""></a>
+    <a href="/neko_lover/following">120 フォロー中</a>
+    <a href="/neko_lover/verified_followers">3,400 フォロワー</a>
+  </div>
+  <nav role="navigation" aria-label="プロフィールのタイムライン">
+    <div role="tablist">
+      <a role="tab" href="/neko_lover">ポスト</a>
+      <a role="tab" href="/neko_lover/with_replies">返信</a>
+      <a role="tab" href="/neko_lover/highlights">ハイライト</a>
+      <a role="tab" href="/neko_lover/media">メディア</a>
+    </div>
+  </nav>
+  <section aria-label="メディア"><div class="grid" id="grid"></div></section>
+</main>
+<script>
+  const kinds = ["photo", "photo", "video", "photo", "photo", "video", "photo", "video", "photo", "photo", "video", "photo", "photo", "video", "photo"];
+  const grid = document.getElementById("grid");
+  kinds.forEach((kind, index) => {
+    const id = 2001 + index;
+    const cell = document.createElement("div");
+    cell.className = "cell";
+    cell.innerHTML = `<a class="tile" href="/neko_lover/status/${id}/${kind}/1"><img src="/media/${id}.jpg" alt=""></a>`;
+    grid.appendChild(cell);
+  });
+</script>
+<script src="/collector.js"></script>
+<script src="/run-scan.js"></script>
+</body>
+</html>

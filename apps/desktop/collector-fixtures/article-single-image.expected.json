@@ -1,0 +1,16 @@
+[
+  {
+    "shape": "{images}",
+    "urls": ["/media/quiet-week.jpg"],
+    "thumbnails": ["/media/quiet-week.jpg"],
+    "titles": ["A window in the rain"],
+    "indexes": [1],
+    "page": {
+      "title": "Notes on a quiet week",
+      "uploader": "Rowan Hale",
+      "publishedAt": 1793608200,
+      "id": "article-single-image"
+    },
+    "groupsInclude": ["{images}", "/notes/{any}"]
+  }
+]

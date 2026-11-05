@@ -1,0 +1,59 @@
+[
+  {
+    "shape": "/{any}/status/{num}/{any}/{num}",
+    "urls": [
+      "/neko_lover/status/1001/photo/1",
+      "/tama/status/1002/photo/1",
+      "/neko_lover/status/1003/video/1",
+      "/mike/status/1004/photo/1",
+      "/kuro/status/1005/photo/1",
+      "/shiro/status/1006/video/1",
+      "/tama/status/1007/photo/1",
+      "/hana2025x/status/1009/photo/1",
+      "/sora/status/1010/video/1",
+      "/mike/status/1011/photo/1",
+      "/kuro/status/1012/photo/1"
+    ],
+    "ads": ["/brand_ad/status/1008/photo/1"],
+    "thumbnails": [
+      "/media/1001.jpg",
+      "/media/1002.jpg",
+      "/media/1003.jpg",
+      "/media/1004.jpg",
+      "/media/1005.jpg",
+      "/media/1006.jpg",
+      "/media/1007.jpg",
+      "/media/1009.jpg",
+      "/media/1010.jpg",
+      "/media/1011.jpg",
+      "/media/1012.jpg"
+    ],
+    "groupsInclude": ["/search?q={id}&src=trend_click&vertical=trends"],
+    "groupsExclude": ["/search?f=", "/search?q=cats", "/home", "/{any}?", "/{any}/{any}", "/{id}"]
+  },
+  {
+    "query": "includeAds=1",
+    "shape": "/{any}/status/{num}/{any}/{num}",
+    "urls": [
+      "/neko_lover/status/1001/photo/1",
+      "/tama/status/1002/photo/1",
+      "/neko_lover/status/1003/video/1",
+      "/mike/status/1004/photo/1",
+      "/kuro/status/1005/photo/1",
+      "/shiro/status/1006/video/1",
+      "/tama/status/1007/photo/1",
+      "/brand_ad/status/1008/photo/1",
+      "/hana2025x/status/1009/photo/1",
+      "/sora/status/1010/video/1",
+      "/mike/status/1011/photo/1",
+      "/kuro/status/1012/photo/1"
+    ],
+    "ads": []
+  },
+  {
+    "query": "shape=%2F%7Bany%7D%2Fstatus%2F%7Bnum%7D%2Fvideo%2F%7Bnum%7D",
+    "shape": "/{any}/status/{num}/video/{num}",
+    "urls": ["/neko_lover/status/1003/video/1", "/shiro/status/1006/video/1", "/sora/status/1010/video/1"],
+    "ads": []
+  }
+]

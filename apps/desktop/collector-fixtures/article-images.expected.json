@@ -1,0 +1,57 @@
+[
+  {
+    "shape": "{images}",
+    "urls": [
+      "/images/garden-01.jpg",
+      "/images/garden-02.jpg",
+      "/images/garden-03.jpg",
+      "/images/garden-04.webp",
+      "/images/garden-05.png",
+      "/images/garden-06-1280.jpg"
+    ],
+    "thumbnails": [
+      "/images/garden-01.jpg",
+      "/images/garden-02.jpg",
+      "/images/garden-03.jpg",
+      "/images/garden-04.webp",
+      "/images/garden-05.png",
+      "/images/garden-06-1280.jpg"
+    ],
+    "titles": ["朝の庭", "掘り返した土", "", "チューリップの球根", "植え付けの図", "夕方の庭"],
+    "indexes": [1, 2, 3, 4, 5, 6],
+    "ads": [],
+    "page": {
+      "title": "庭の記録 十月",
+      "uploader": "森 かなで",
+      "publishedAt": 1793318400,
+      "id": "article-images"
+    },
+    "groupsInclude": ["{images}", "/hashtag/{any}", "/posts/{any}"],
+    "groupsExclude": ["/topics", "/privacy", "/u/"]
+  },
+  {
+    "query": "shape=%2Fhashtag%2F%7Bany%7D",
+    "shape": "/hashtag/{any}",
+    "urls": [
+      "/hashtag/%E5%BA%AD",
+      "/hashtag/%E7%90%83%E6%A0%B9",
+      "/hashtag/%E3%83%81%E3%83%A5%E3%83%BC%E3%83%AA%E3%83%83%E3%83%97",
+      "/hashtag/%E5%8D%81%E6%9C%88",
+      "/hashtag/%E5%9C%9F%E3%81%A5%E3%81%8F%E3%82%8A",
+      "/hashtag/%E3%82%AC%E3%83%BC%E3%83%87%E3%83%8B%E3%83%B3%E3%82%B0",
+      "/hashtag/%E6%9A%AE%E3%82%89%E3%81%97",
+      "/hashtag/%E5%AD%A3%E7%AF%80",
+      "/hashtag/%E6%97%A5%E8%A8%98",
+      "/hashtag/%E5%86%99%E7%9C%9F",
+      "/hashtag/%E7%A7%8B"
+    ],
+    "indexes": [null, null, null, null, null, null, null, null, null, null, null],
+    "page": { "title": "庭の記録 十月", "id": "article-images" },
+    "groupsInclude": ["{images}"]
+  },
+  {
+    "query": "shape=%7Bimages%7D",
+    "shape": "{images}",
+    "indexes": [1, 2, 3, 4, 5, 6]
+  }
+]

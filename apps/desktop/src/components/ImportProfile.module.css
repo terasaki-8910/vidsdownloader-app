@@ -1,0 +1,10 @@
+/* The only Firefox profile, as text. Same height as the buttons next to it so the row
+   lines up whether it holds this or the select. */
+.single {
+  display: inline-flex;
+  align-items: center;
+  height: 34px;
+  font-size: 13px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}

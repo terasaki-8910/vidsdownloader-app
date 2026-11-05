@@ -1,0 +1,172 @@
+# Builds a release on a pushed version tag (v0.1.0, ...) or by hand, and publishes it to the
+# public releases repository: Windows (NSIS, per user) and macOS (universal) installers, the
+# signed updater bundles and latest.json, which the in-app updater reads. Nothing is built for a
+# release anywhere else.
+#
+# 1. draft    reads the version (tauri.conf.json) and docs/release-notes/<version>.md and creates
+#             the draft release, so both builds upload to the same one
+# 2. build    tauri-action on Windows and macOS adds the installers, the updater bundles and
+#             their part of latest.json to the draft
+# 3. publish  checks that latest.json has every platform, then publishes the draft; until then
+#             .../releases/latest/download/latest.json still serves the previous release
+#
+# Secrets: RELEASES_TOKEN (fine-grained, contents read/write on the releases repository only),
+# TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD (the updater signing key).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  RELEASES_REPO: terasaki-8910/vidsdownloader-releases
+
+jobs:
+  draft:
+    name: Draft the release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      notes: ${{ steps.meta.outputs.notes }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Version and release notes
+        id: meta
+        shell: bash
+        run: |
+          version=$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")
+          notes="docs/release-notes/${version}.md"
+          if [ ! -f "$notes" ]; then
+            echo "::error::$notes is missing"
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v${version}" ]; then
+            echo "::error::the tag $GITHUB_REF_NAME does not match the app version ${version}"
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          {
+            echo "notes<<RELEASE_NOTES_EOF"
+            cat "$notes"
+            echo "RELEASE_NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create the draft
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          if draft=$(gh release view "v${VERSION}" -R "$RELEASES_REPO" --json isDraft --jq .isDraft 2>/dev/null); then
+            if [ "$draft" != "true" ]; then
+              echo "::error::v${VERSION} is already published in $RELEASES_REPO"
+              exit 1
+            fi
+            echo "The draft v${VERSION} exists; the builds add to it."
+          else
+            gh release create "v${VERSION}" -R "$RELEASES_REPO" --draft --target main \
+              --title "vidsdownloader v${VERSION}" --notes-file "docs/release-notes/${VERSION}.md"
+          fi
+
+  build:
+    name: Build (${{ matrix.platform }})
+    needs: draft
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            args: ""
+            rust_targets: ""
+          # Intel: GitHub's arm64 macOS pool could not hand out a runner on 2026-11-04 (capacity
+          # constraints); the universal build cross-compiles the aarch64 half either way.
+          - platform: macos-15-intel
+            args: --target universal-apple-darwin
+            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: apps/desktop/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_targets }}
+
+      - name: Install the app's packages
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile
+
+      # Runs `pnpm tauri build` in apps/desktop (its beforeBuildCommand builds the frontend).
+      - uses: tauri-apps/tauri-action@v0.6.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: apps/desktop
+          owner: terasaki-8910
+          repo: vidsdownloader-releases
+          tagName: v__VERSION__
+          releaseName: vidsdownloader v__VERSION__
+          releaseBody: ${{ needs.draft.outputs.notes }}
+          releaseDraft: true
+          # The tag is created in the releases repository when the draft is published.
+          releaseCommitish: main
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
+          args: ${{ matrix.args }}
+
+  publish:
+    name: Publish the release
+    needs: [draft, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check latest.json
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          VERSION: ${{ needs.draft.outputs.version }}
+        run: |
+          gh release download "v${VERSION}" -R "$RELEASES_REPO" -p latest.json -D "$RUNNER_TEMP" --clobber
+          node -e '
+            const fs = require("fs");
+            const json = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            const version = process.env.VERSION;
+            const problems = [];
+            if (json.version !== version) problems.push(`version is ${json.version}, not ${version}`);
+            for (const platform of ["windows-x86_64", "darwin-aarch64", "darwin-x86_64"]) {
+              const entry = json.platforms && json.platforms[platform];
+              if (!entry || !entry.signature) problems.push(`${platform} is missing or unsigned`);
+              else if (!entry.url.includes(`/download/v${version}/`)) problems.push(`${platform} points to ${entry.url}`);
+            }
+            if (problems.length) {
+              console.error("latest.json: " + problems.join("; "));
+              process.exit(1);
+            }
+            console.log("latest.json has " + Object.keys(json.platforms).join(", "));
+          ' "$RUNNER_TEMP/latest.json"
+
+      - name: Publish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          VERSION: ${{ needs.draft.outputs.version }}
+        run: gh release edit "v${VERSION}" --draft=false -R "$RELEASES_REPO"

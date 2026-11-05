@@ -1,0 +1,21 @@
+{
+  "includeCoAuthoredBy": false,
+  "statusLine": {
+    "type": "command",
+    "command": "sh .claude/statusline.sh"
+  },
+  "permissions": {
+    "allow": [
+      "Read", "Edit", "Write",
+      "Bash(git add:*)", "Bash(git commit:*)", "Bash(git checkout:*)",
+      "Bash(git merge:*)", "Bash(git worktree:*)", "Bash(git push:*)",
+      "Bash(npm test:*)", "Bash(npm run:*)", "Bash(python -m pytest:*)",
+      "Bash(npm install:*)", "Bash(npm ci:*)", "Bash(npx:*)", "Bash(pip install:*)",
+      "Bash(pnpm install:*)", "Bash(pnpm test:*)", "Bash(pnpm run:*)", "Bash(pnpm build:*)",
+      "Bash(pnpm lint:*)", "Bash(pnpm exec:*)", "Bash(pnpm dlx:*)"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)", "WebFetch"
+    ]
+  }
+}

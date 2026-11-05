@@ -1,0 +1,111 @@
+/* A source's row: the same padding and rule as a queue row, with a 30px badge (the sites'
+   own) where the queue has a thumbnail. The title block, text action and progress bar are the
+   app's own (imported modules); these rules are only the row. */
+.row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  padding: 14px 20px 14px 28px;
+  border-bottom: 1px solid var(--line);
+}
+
+.row[aria-busy="true"] {
+  opacity: 0.6;
+}
+
+.body {
+  min-width: 0;
+}
+
+/* 20px lines with 5px above: the first line sits at the middle of the 30px action buttons. */
+.title {
+  padding-top: 5px;
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+}
+
+/* The name turns into this field in place while it is renamed. */
+.renameInput {
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.renameInput:focus-visible {
+  border-color: var(--accent);
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+
+.renameInput[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+.renameInput:read-only {
+  color: var(--muted);
+}
+
+.meta {
+  margin-top: 3px;
+  font-size: 12.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.shape {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.error {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+
+/* Never centered against the row: the controls keep the top right corner. */
+.actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.check:disabled {
+  color: var(--muted);
+  opacity: 0.6;
+  cursor: default;
+}
+
+.check:disabled:hover {
+  background: var(--surface);
+}
+
+/* A failed check's line can be long: the warning icon stays at its first line instead of
+   wrapping off alone (the shared state line wraps its children). */
+div.statusError {
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+
+.statusError svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.statusError span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

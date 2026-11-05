@@ -1,0 +1,10 @@
+.choices { display: grid; gap: 0; margin: 16px 0 0; padding: 0; border: 0; }
+.choice { display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: start; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); color: var(--ink); cursor: pointer; }
+.choice:last-child { border-bottom: 1px solid var(--line); }
+.choice input { width: 16px; height: 16px; margin: 1px 0 0; accent-color: var(--accent); }
+.details, .meta, .url { display: block; min-width: 0; }
+.meta { font-size: 13.5px; font-weight: 600; line-height: 1.45; font-variant-numeric: tabular-nums; }
+.url { margin-top: 2px; overflow: hidden; color: var(--muted); font-family: var(--mono); font-size: 12px; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
+.error { margin: 12px 0 0; color: var(--danger); font-size: 12.5px; line-height: 1.45; }
+.cancel { height: 34px; padding: 0 16px; border: 0; border-radius: 7px; background: transparent; color: var(--ink-2); font-size: 13.5px; font-weight: 500; white-space: nowrap; }
+.cancel:hover { background: var(--hover); }

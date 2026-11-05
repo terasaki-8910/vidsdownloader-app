@@ -1,0 +1,68 @@
+<!doctype html>
+<!-- Modeled on an X timeline (search > Latest, home): posts as articles with avatar, name and
+     time links, photo or video media or none, an analytics link, and a promoted post. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Latest / X</title>
+<style>
+  body { margin: 0; display: flex; font: 15px sans-serif; }
+  header[role="banner"] { width: 260px; flex: none; }
+  header a { display: block; padding: 12px; }
+  main { width: 600px; flex: none; }
+  article { display: flex; gap: 12px; padding: 12px 16px; }
+  .avatar img { display: block; width: 40px; height: 40px; border-radius: 50%; }
+  .body { width: 500px; }
+  .media img, .media video { display: block; width: 500px; height: 280px; }
+  .actions a { display: inline-block; padding: 8px 0; }
+</style>
+</head>
+<body>
+<header role="banner">
+  <nav role="navigation" aria-label="Primary">
+    <a href="/home">Home</a>
+    <a href="/explore">Explore</a>
+    <a href="/notifications">Notifications</a>
+  </nav>
+</header>
+<main role="main">
+  <section aria-label="Timeline"><div id="timeline"></div></section>
+</main>
+<script>
+  const posts = [
+    ["alice", 3001, "photo"],
+    ["bob", 3002, null],
+    ["carol", 3003, "video"],
+    ["dave", 3004, "photo"],
+    ["brand", 3005, "photo", true],
+    ["erin", 3006, null],
+    ["alice", 3007, "video"],
+    ["frank", 3008, "photo"],
+  ];
+  const timeline = document.getElementById("timeline");
+  for (const [user, id, media, promoted] of posts) {
+    const cell = document.createElement("div");
+    const mediaHtml =
+      media === "photo"
+        ? `<div class="media"><a href="/${user}/status/${id}/photo/1"><img src="/media/${id}.jpg" alt="Image"></a></div>`
+        : media === "video"
+          ? `<div class="media"><video poster="/media/${id}.jpg" preload="none"></video></div>`
+          : "";
+    cell.innerHTML =
+      `<article>` +
+      `<div class="avatar"><a href="/${user}"><img src="/profile_images/${user}.jpg" alt=""></a></div>` +
+      `<div class="body">` +
+      `<div><a href="/${user}">${user}</a> <a href="/${user}">@${user}</a> · <a href="/${user}/status/${id}"><time>3h</time></a>` +
+      (promoted ? ` <span>Promoted</span>` : "") +
+      `</div>` +
+      `<div>Post number ${id} by ${user}, with some words in it.</div>` +
+      mediaHtml +
+      `<div class="actions"><a href="/${user}/status/${id}/analytics">${id % 97} views</a></div>` +
+      `</div></article>`;
+    timeline.appendChild(cell);
+  }
+</script>
+<script src="/collector.js"></script>
+<script src="/run-scan.js"></script>
+</body>
+</html>

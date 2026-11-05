@@ -1,0 +1,22 @@
+/* The Sources page. The title block, URL bar and list frame are the app's own (imported
+   modules); these rules are only what the page adds. */
+
+/* The secondary button sits at the right of the title row. */
+.checkAll {
+  margin-left: auto;
+  align-self: center;
+}
+
+/* One line under the field: why registering (or checking everything) did not work. */
+.message {
+  margin: 8px 28px 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+
+/* The empty state's one sentence reads on one line where the window is wide enough. */
+div.emptyBody {
+  max-width: none;
+}

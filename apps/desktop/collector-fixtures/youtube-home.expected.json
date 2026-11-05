@@ -1,0 +1,56 @@
+[
+  {
+    "shape": "/watch?v={id}",
+    "urls": [
+      "/watch?v=v01AbCdEfGh",
+      "/watch?v=v02AbCdEfGh",
+      "/watch?v=v04AbCdEfGh",
+      "/watch?v=v05AbCdEfGh",
+      "/watch?v=v06AbCdEfGh",
+      "/watch?v=v07AbCdEfGh",
+      "/watch?v=v08AbCdEfGh",
+      "/watch?v=v09AbCdEfGh",
+      "/watch?v=v10AbCdEfGh",
+      "/watch?v=v11AbCdEfGh",
+      "/watch?v=v12AbCdEfGh",
+      "/watch?v=v13AbCdEfGh"
+    ],
+    "ads": ["/watch?v=AD9xYzW7v5u"],
+    "thumbnails": [
+      "/vi/v01AbCdEfGh/hq.jpg",
+      "/vi/v02AbCdEfGh/hq.jpg",
+      "/vi/v04AbCdEfGh/hq.jpg",
+      "/vi/v05AbCdEfGh/hq.jpg",
+      "/vi/v06AbCdEfGh/hq.jpg",
+      "/vi/v07AbCdEfGh/hq.jpg",
+      "/vi/v08AbCdEfGh/hq.jpg",
+      "/vi/v09AbCdEfGh/hq.jpg",
+      "/vi/v10AbCdEfGh/hq.jpg",
+      "/vi/v11AbCdEfGh/hq.jpg",
+      "/vi/v12AbCdEfGh/hq.jpg",
+      "/vi/v13AbCdEfGh/hq.jpg"
+    ],
+    "titles": [
+      "動画のタイトル その 1 と少し長い説明",
+      "動画のタイトル その 2 と少し長い説明",
+      "動画のタイトル その 4 と少し長い説明",
+      "動画のタイトル その 5 と少し長い説明",
+      "動画のタイトル その 6 と少し長い説明",
+      "動画のタイトル その 7 と少し長い説明",
+      "動画のタイトル その 8 と少し長い説明",
+      "動画のタイトル その 9 と少し長い説明",
+      "動画のタイトル その 10 と少し長い説明",
+      "動画のタイトル その 11 と少し長い説明",
+      "動画のタイトル その 12 と少し長い説明",
+      "動画のタイトル その 13 と少し長い説明"
+    ],
+    "groupsInclude": ["/shorts/{id}"],
+    "groupsExclude": ["/feed", "/playlist", "/@", "/{any}"]
+  },
+  {
+    "query": "shape=%2Fshorts%2F%7Bid%7D",
+    "shape": "/shorts/{id}",
+    "urls": ["/shorts/s01AbCdEfGh", "/shorts/s02AbCdEfGh", "/shorts/s03AbCdEfGh", "/shorts/s04AbCdEfGh"],
+    "thumbnails": ["/vi/s01AbCdEfGh/frame.jpg", "/vi/s02AbCdEfGh/frame.jpg", "/vi/s03AbCdEfGh/frame.jpg", "/vi/s04AbCdEfGh/frame.jpg"]
+  }
+]

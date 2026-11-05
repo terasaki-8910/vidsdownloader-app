@@ -1,0 +1,126 @@
+.box {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+  background: var(--thumb);
+  overflow: hidden;
+  flex: none;
+}
+
+.stage {
+  background:
+    linear-gradient(var(--dur-bg), var(--dur-bg)),
+    linear-gradient(var(--dur-bg), var(--dur-bg)),
+    var(--thumb);
+}
+
+.slot {
+  position: absolute;
+  inset: 0;
+}
+
+.poster,
+.video {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.poster {
+  object-fit: cover;
+}
+
+.video {
+  object-fit: contain;
+}
+
+.play {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: 48px;
+  height: 48px;
+  margin: -24px 0 0 -24px;
+  display: grid;
+  place-items: center;
+  padding: 0 0 0 3px;
+  border: 2px solid var(--on-accent);
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: var(--shadow);
+}
+
+.play:hover {
+  filter: brightness(1.06);
+}
+
+.play:focus-visible {
+  border-radius: 50%;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+.pip {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: var(--dur-bg);
+  color: var(--dur-ink);
+}
+
+.pip:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.pip:focus-visible {
+  border-radius: 7px;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* While in picture-in-picture, the webview writes its own notice across the top of the
+   box and keeps its control bar at the bottom; the button drops below the notice. */
+.pipActive {
+  top: 40px;
+}
+
+.message {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px;
+  color: var(--ink);
+  font-size: 13px;
+  text-align: center;
+}
+
+.openButton {
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.openButton:hover {
+  background: var(--hover);
+}

@@ -1,0 +1,465 @@
+<title>確認シート</title>
+<style>
+  :root {
+    --paper: #F6F6F6;
+    --panel: #FFFFFF;
+    --ink: #1A1A1A;
+    --muted: #5C5C5C;
+    --line: rgba(0, 0, 0, 0.14);
+    --line-strong: rgba(0, 0, 0, 0.32);
+    /* 差し色は、選んだ選択肢と押せるものの印にだけ使う。プロジェクトの差し色に替える */
+    --accent: #1F6FEB;
+    --accent-fill: rgba(31, 111, 235, 0.12);
+    --focus: #1A1A1A;
+    --scrim: rgba(26, 26, 26, 0.72);
+    --font-body: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", "Noto Sans JP", sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #121212;
+      --panel: #1C1C1C;
+      --ink: #EDEDED;
+      --muted: #A3A3A3;
+      --line: rgba(255, 255, 255, 0.14);
+      --line-strong: rgba(255, 255, 255, 0.34);
+      --accent: #58A6FF;
+      --accent-fill: rgba(88, 166, 255, 0.16);
+      --focus: #58A6FF;
+      --scrim: rgba(0, 0, 0, 0.8);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #121212;
+    --panel: #1C1C1C;
+    --ink: #EDEDED;
+    --muted: #A3A3A3;
+    --line: rgba(255, 255, 255, 0.14);
+    --line-strong: rgba(255, 255, 255, 0.34);
+    --accent: #58A6FF;
+    --accent-fill: rgba(88, 166, 255, 0.16);
+    --focus: #58A6FF;
+    --scrim: rgba(0, 0, 0, 0.8);
+    color-scheme: dark;
+  }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.8;
+    padding-inline: 20px;
+    padding-block: 40px 120px;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; display: grid; gap: 56px; }
+  h1, h2, h3 { font-weight: 700; text-wrap: balance; margin: 0; line-height: 1.4; }
+  h1 { font-size: clamp(26px, 5vw, 36px); }
+  h2 { font-size: 21px; }
+  h3 { font-size: 17px; }
+  p { margin: 0; }
+  a { color: var(--ink); text-underline-offset: 3px; }
+  a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  code { font-family: var(--font-mono); font-size: 0.88em; overflow-wrap: anywhere; }
+  .muted { color: var(--muted); }
+
+  header { display: grid; gap: 14px; }
+  .eyebrow { font-family: var(--font-mono); font-size: 13px; letter-spacing: 0.04em; color: var(--muted); }
+  .lead { max-width: 65ch; }
+  .status {
+    justify-self: start; font-family: var(--font-mono); font-size: 13px;
+    border: 1px solid var(--line-strong); border-radius: 999px; padding: 2px 12px;
+  }
+
+  section { display: grid; gap: 20px; }
+  .sec-head { display: grid; gap: 6px; border-top: 1px solid var(--line-strong); padding-top: 20px; }
+
+  /* 「見る場所」などの、見出しと中身の組 */
+  .facts { margin: 0; display: grid; }
+  .facts div { display: grid; grid-template-columns: 11em 1fr; gap: 16px; padding-block: 10px; border-bottom: 1px solid var(--line); }
+  .facts div:first-child { border-top: 1px solid var(--line); }
+  .facts dt { color: var(--muted); }
+  .facts dd { margin: 0; min-width: 0; }
+
+  /* 聞かずに決めたこと */
+  .decided-list { margin: 0; padding-left: 1.4em; display: grid; gap: 8px; max-width: 72ch; }
+
+  /* 画像を並べる */
+  .two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .two figure { margin: 0; display: grid; gap: 6px; align-content: start; }
+  .two figcaption { font-size: 14px; color: var(--muted); }
+  .shot {
+    display: block; width: 100%; padding: 0; border: 1px solid var(--line); border-radius: 4px;
+    background: var(--panel); cursor: zoom-in;
+  }
+  .shot img { display: block; width: 100%; height: auto; border-radius: 3px; }
+  .shot:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  /* 質問 */
+  .q { display: grid; gap: 16px; padding-top: 24px; border-top: 1px solid var(--line-strong); }
+  .q-head { display: grid; gap: 8px; }
+  .q-id { font-family: var(--font-mono); font-size: 13px; color: var(--muted); }
+  .context { max-width: 70ch; }
+  fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+  legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .opts { display: grid; gap: 12px; }
+  .opt {
+    position: relative; display: grid; gap: 10px; align-content: start;
+    border: 1px solid var(--line-strong); border-radius: 8px; padding: 14px;
+    transition: background-color 120ms ease, border-color 120ms ease;
+  }
+  .opt:hover { border-color: var(--ink); }
+  .opt-label { display: grid; gap: 8px; cursor: pointer; }
+  .opt input { position: absolute; opacity: 0; pointer-events: none; }
+  .row { display: grid; grid-template-columns: 22px 1fr; gap: 10px; align-items: start; }
+  .dot {
+    width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--line-strong);
+    margin-top: 4px; display: grid; place-items: center;
+  }
+  .dot::after { content: ""; width: 8px; height: 8px; border-radius: 50%; }
+  .opt input[type="checkbox"] + .row .dot { border-radius: 3px; }
+  .opt input[type="checkbox"] + .row .dot::after { border-radius: 1px; }
+  .opt:has(input:checked) { background: var(--accent-fill); border-color: var(--accent); }
+  .opt:has(input:checked) .dot { border-color: var(--ink); }
+  .opt:has(input:checked) .dot::after { background: var(--ink); }
+  .opt:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .title { line-height: 1.6; }
+  .note { font-size: 14px; color: var(--muted); line-height: 1.7; }
+
+  .other { display: grid; gap: 6px; }
+  .other label { font-size: 14px; color: var(--muted); }
+  textarea {
+    font: inherit; font-size: 15px; color: var(--ink); background: var(--panel);
+    border: 1px solid var(--line-strong); border-radius: 6px; padding: 10px 12px;
+    min-height: 3.4em; resize: vertical; width: 100%; box-sizing: border-box;
+  }
+  textarea:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+  /* 送り方 */
+  .send { display: grid; gap: 12px; padding-top: 24px; border-top: 1px solid var(--line-strong); }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  button.primary {
+    font: inherit; font-size: 15px; color: var(--ink); background: var(--accent-fill);
+    border: 1px solid var(--accent); border-radius: 6px; padding: 8px 16px; cursor: pointer;
+  }
+  button.primary:hover { border-color: var(--ink); }
+  button.primary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .mono { font-family: var(--font-mono); font-size: 13px; }
+  #copyFallback { display: none; }
+  #copyFallback.show { display: block; min-height: 12em; }
+
+  /* 画像の拡大 */
+  .lightbox {
+    position: fixed; inset: 0; background: var(--scrim); display: grid; place-items: center;
+    padding: 48px 16px 16px; z-index: 10;
+  }
+  .lightbox[hidden] { display: none !important; }
+  .lightbox figure { margin: 0; max-width: min(1100px, 100%); max-height: 100%; overflow: auto; background: var(--paper); border-radius: 6px; }
+  .lightbox img { display: block; width: 100%; height: auto; }
+  .lightbox figcaption { padding: 8px 12px; font-size: 14px; }
+  .lb-close {
+    position: fixed; top: 12px; right: 16px; font: inherit; font-size: 15px;
+    background: var(--paper); color: var(--ink); border: 1px solid var(--line-strong);
+    border-radius: 6px; padding: 4px 12px; cursor: pointer;
+  }
+  .lb-close:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  @media (max-width: 640px) {
+    body { padding-inline: 16px; }
+    .two { grid-template-columns: 1fr; }
+    .facts div { grid-template-columns: 1fr; gap: 2px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .opt { transition: none; }
+  }
+</style>
+
+<!--
+  確認シートの雛形（docs/decision-sheet.md の「3. シートを組む」で使う）。
+
+  使い方
+  - このファイルを写し、「ここを書き換える」の印がある所だけを、その回の内容にする。
+    回答の自動保存・前回の回答の読み込み・回答のコピー・画像の拡大は、そのまま使う。
+  - Artifact ツールで公開するときは、このまま渡す（ページは db を宣言する）。
+    手元のブラウザで開くときは、先頭に <!doctype html><meta charset="utf-8"> を足す。
+  - 選択肢の id は「<質問の id>-<値>」、自由記入欄の id は「<質問の id>-note」にそろえる。
+    スクリプトの QUESTIONS と食い違うと、保存した回答を戻せない。
+  - 色はプロジェクトに合わせて :root のトークンを替える（差し色は --accent の1色だけ）。
+-->
+
+<div class="wrap">
+  <!-- ここを書き換える: 回・日付・この回で扱うこと・作業の状態・質問の数 -->
+  <header>
+    <div class="eyebrow">作業前の確認 · 1回目 · YYYY-MM-DD</div>
+    <h1>確認シート</h1>
+    <p class="lead">この回で扱うことを1〜2文で。作業の状態（未コミット・ブランチ・公開済み）。質問は3つです。</p>
+    <div class="status" id="status" role="status">保存の準備中…</div>
+  </header>
+
+  <!-- ここを書き換える: 見本の場所。今の版と並べて開けるようにする -->
+  <section aria-labelledby="h-where">
+    <div class="sec-head"><h2 id="h-where">見る場所</h2></div>
+    <dl class="facts">
+      <div><dt>見本</dt><dd><a href="http://localhost:5173/" target="_blank" rel="noopener">http://localhost:5173/</a>（ブランチ <code>feat/example</code>、未コミット）</dd></div>
+      <div><dt>今の版</dt><dd><a href="http://localhost:4173/" target="_blank" rel="noopener">http://localhost:4173/</a></dd></div>
+    </dl>
+  </section>
+
+  <!-- ここを書き換える: 質問のまとまりごとに section を1つ -->
+  <section aria-labelledby="h-main">
+    <div class="sec-head">
+      <h2 id="h-main">見出しの配置</h2>
+      <p class="muted">このまとまりの背景を1〜2文で。</p>
+    </div>
+
+    <h3>聞かずに決めたこと</h3>
+    <ol class="decided-list">
+      <li>決まったやり方があるので、自分で決めたこと（あとで覆せるように書いておく）。</li>
+    </ol>
+
+    <!-- 1つ選ぶ質問。おすすめを先頭に置き、理由を1行添える -->
+    <div class="q" id="q1">
+      <div class="q-head">
+        <div class="q-id">R1-1</div>
+        <h3>見出しは、どちらに置きますか</h3>
+        <p class="context">1〜2文の背景。答えによって何が変わるか。</p>
+      </div>
+      <fieldset><legend>R1-1 の答え</legend><div class="opts">
+        <div class="opt">
+          <label class="opt-label" for="q1-a"><input type="radio" name="q1" value="a" id="q1-a"><span class="row"><span class="dot" aria-hidden="true"></span><span class="title">A（おすすめ）左寄せ</span></span><span class="note">おすすめの理由を1行で。</span></label>
+          <div class="two">
+            <figure><button type="button" class="shot" data-full="img/q1-a-sp-light.jpg" data-cap="A・スマホ（ライト）"><img src="img/q1-a-sp-light.jpg" alt="A・スマホ（ライト）" loading="lazy"></button><figcaption>A・スマホ（ライト）</figcaption></figure>
+            <figure><button type="button" class="shot" data-full="img/q1-a-pc-dark.jpg" data-cap="A・PC（ダーク）"><img src="img/q1-a-pc-dark.jpg" alt="A・PC（ダーク）" loading="lazy"></button><figcaption>A・PC（ダーク）</figcaption></figure>
+          </div>
+        </div>
+        <div class="opt">
+          <label class="opt-label" for="q1-b"><input type="radio" name="q1" value="b" id="q1-b"><span class="row"><span class="dot" aria-hidden="true"></span><span class="title">B 中央</span></span><span class="note">この案で変わることを1行で。</span></label>
+        </div>
+      </div></fieldset>
+      <div class="other"><label for="q1-note">その他・補足</label><textarea id="q1-note" data-q="q1"></textarea></div>
+    </div>
+
+    <!-- 複数選ぶ質問（答えが集合のとき） -->
+    <div class="q" id="q2">
+      <div class="q-head">
+        <div class="q-id">R1-2</div>
+        <h3>残す文言を選んでください（いくつでも）</h3>
+      </div>
+      <fieldset><legend>R1-2 の答え</legend><div class="opts">
+        <div class="opt"><label class="opt-label" for="q2-p1"><input type="checkbox" name="q2" value="p1" id="q2-p1"><span class="row"><span class="dot" aria-hidden="true"></span><span class="title">案の文言 1</span></span></label></div>
+        <div class="opt"><label class="opt-label" for="q2-p2"><input type="checkbox" name="q2" value="p2" id="q2-p2"><span class="row"><span class="dot" aria-hidden="true"></span><span class="title">案の文言 2</span></span></label></div>
+      </div></fieldset>
+      <div class="other"><label for="q2-note">自分で書く文言（1行に1つ）</label><textarea id="q2-note" data-q="q2"></textarea></div>
+    </div>
+  </section>
+
+  <!-- 最後は「そのほか」。選択肢は無く、自由記入だけ -->
+  <section aria-labelledby="h-rest">
+    <div class="sec-head"><h2 id="h-rest">そのほか</h2></div>
+    <div class="q" id="q3">
+      <div class="q-head"><div class="q-id">R1-3</div><h3>ほかに気になること</h3></div>
+      <div class="other"><label for="q3-note">自由に書いてください</label><textarea id="q3-note" data-q="q3"></textarea></div>
+    </div>
+  </section>
+
+  <section class="send" aria-labelledby="h-send">
+    <h2 id="h-send">送り方</h2>
+    <p>選んだ内容は、このシートに自動で保存され、Claude が直接読みます。答え終わったら、チャットで「回答した」とだけ送ってください。</p>
+    <p class="muted">上の表示が「保存できません」のときは、「回答をコピー」で文章にして、チャットに貼ってください。</p>
+    <div class="actions">
+      <button type="button" class="primary" id="copyBtn">回答をコピー</button>
+      <span class="mono muted" id="copyMsg" role="status"></span>
+    </div>
+    <textarea id="copyFallback" readonly aria-label="回答の文章"></textarea>
+  </section>
+</div>
+
+<div class="lightbox" id="lightbox" hidden role="dialog" aria-modal="true" aria-label="画像の拡大">
+  <button type="button" class="lb-close" id="lbClose">閉じる</button>
+  <figure>
+    <img id="lbImg" alt="">
+    <figcaption id="lbCap"></figcaption>
+  </figure>
+</div>
+
+<script>
+(function () {
+  // ここを書き換える: 回の名前（answers/<ROUND> に保存する）、コピーしたときの見出し、質問
+  var ROUND = 'round1';
+  var COPY_TITLE = '確認シートの回答（1回目）';
+  // choices のキーは、選択肢の input の value と同じにする。multi は複数選ぶ質問。
+  // 選択肢の無い質問（自由記入だけ）は choices: {} にする
+  var QUESTIONS = [
+    { id: 'q1', label: 'R1-1 見出しの配置', choices: { a: 'A 左寄せ', b: 'B 中央' } },
+    { id: 'q2', label: 'R1-2 残す文言', multi: true, choices: { p1: '案の文言 1', p2: '案の文言 2' } },
+    { id: 'q3', label: 'R1-3 ほかに気になること', choices: {} },
+  ];
+  // ここまで
+
+  var statusEl = document.getElementById('status');
+  var state = {};
+  QUESTIONS.forEach(function (q) { state[q.id] = { choice: q.multi ? [] : null, note: '' }; });
+  function setStatus(text) { statusEl.textContent = text; }
+
+  function noteOf(q) {
+    var el = document.getElementById(q.id + '-note');
+    return el ? el.value : '';
+  }
+
+  function readForm() {
+    QUESTIONS.forEach(function (q) {
+      var note = noteOf(q);
+      if (q.multi) {
+        var picked = Array.prototype.map.call(document.querySelectorAll('input[name="' + q.id + '"]:checked'), function (el) { return el.value; });
+        state[q.id] = { choice: picked, note: note };
+        return;
+      }
+      var checked = document.querySelector('input[name="' + q.id + '"]:checked');
+      var choice = checked ? checked.value : null;
+      if (!choice && note.trim()) choice = 'other';
+      state[q.id] = { choice: choice, note: note };
+    });
+  }
+
+  function applyState(saved) {
+    QUESTIONS.forEach(function (q) {
+      var s = saved && saved[q.id];
+      if (!s) return;
+      if (Array.isArray(s.choice)) {
+        s.choice.forEach(function (v) { var el = document.getElementById(q.id + '-' + v); if (el) el.checked = true; });
+      } else if (s.choice && s.choice !== 'other') {
+        var input = document.getElementById(q.id + '-' + s.choice);
+        if (input) input.checked = true;
+      }
+      var noteEl = document.getElementById(q.id + '-note');
+      if (noteEl && typeof s.note === 'string') noteEl.value = s.note;
+    });
+    readForm();
+  }
+
+  function answerText() {
+    readForm();
+    var lines = ['【' + COPY_TITLE + '】'];
+    QUESTIONS.forEach(function (q) {
+      var s = state[q.id];
+      var c = Array.isArray(s.choice)
+        ? (s.choice.length ? s.choice.map(function (v) { return q.choices[v]; }).join(' / ') : '（選択なし）')
+        : (s.choice === 'other' ? 'その他' : (s.choice ? q.choices[s.choice] : '未回答'));
+      lines.push(q.label + '：' + c);
+      if (s.note.trim()) lines.push('　補足：' + s.note.trim().replace(/\n/g, ' / '));
+    });
+    return lines.join('\n');
+  }
+
+  // 自動保存: 変更のたびに 700ms 待ってから answers/<ROUND> に書く。書き込みは1件ずつ順番に
+  var docRef = null;
+  var pending = null;
+  var writing = Promise.resolve();
+  var dirty = false;
+
+  function schedule() {
+    dirty = true;
+    if (!docRef) return;
+    if (pending) clearTimeout(pending);
+    setStatus('保存中…');
+    pending = setTimeout(flush, 700);
+  }
+
+  function flush() {
+    pending = null;
+    if (!docRef || !dirty) return;
+    dirty = false;
+    readForm();
+    var body = JSON.parse(JSON.stringify(state));
+    body.updatedAt = new Date().toISOString();
+    writing = writing.then(function () {
+      return docRef.set(body).then(function () {
+        var t = new Date();
+        setStatus('保存しました ' + String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0'));
+      }, function (e) {
+        if (e && e.code === 'unavailable') {
+          dirty = true;
+          setTimeout(flush, 1500 + Math.random() * 1000);
+          return;
+        }
+        setStatus('保存できません。「回答をコピー」を使ってください');
+      });
+    });
+  }
+
+  function onChange() {
+    readForm();
+    schedule();
+  }
+  document.addEventListener('input', onChange);
+  document.addEventListener('change', onChange);
+
+  var api = window.claude && typeof window.claude.use === 'function' ? window.claude.use('db') : Promise.resolve(null);
+  api.then(function (db) {
+    if (!db) { setStatus('保存できません。「回答をコピー」を使ってください'); return; }
+    docRef = db.doc('answers/' + ROUND);
+    return docRef.get().then(function (snap) {
+      if (snap.exists) {
+        applyState(snap.data());
+        setStatus('前回の回答を読み込みました');
+      } else {
+        setStatus('選ぶと自動で保存します');
+      }
+      if (dirty) schedule();
+    });
+  }).catch(function () {
+    setStatus('保存できません。「回答をコピー」を使ってください');
+  });
+
+  var copyMsg = document.getElementById('copyMsg');
+  var fallback = document.getElementById('copyFallback');
+  document.getElementById('copyBtn').addEventListener('click', function () {
+    var text = answerText();
+    function showFallback() {
+      fallback.value = text;
+      fallback.classList.add('show');
+      fallback.focus();
+      fallback.select();
+      copyMsg.textContent = 'コピーできなかったので、下の文章を選択しました';
+    }
+    try {
+      navigator.clipboard.writeText(text).then(function () {
+        copyMsg.textContent = 'コピーしました';
+      }, showFallback);
+    } catch (e) { showFallback(); }
+  });
+
+  // 画像の拡大（.shot を押すと data-full の画像を出す。Esc・外側・「閉じる」で閉じる）
+  var lb = document.getElementById('lightbox');
+  var lbImg = document.getElementById('lbImg');
+  var lbCap = document.getElementById('lbCap');
+  var lbClose = document.getElementById('lbClose');
+  var lastFocus = null;
+  function openLb(src, cap) {
+    lastFocus = document.activeElement;
+    lbImg.src = src; lbImg.alt = cap; lbCap.textContent = cap;
+    lb.hidden = false;
+    lbClose.focus();
+  }
+  function closeLb() {
+    lb.hidden = true;
+    lbImg.removeAttribute('src');
+    if (lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+  document.addEventListener('click', function (e) {
+    var shot = e.target.closest && e.target.closest('.shot');
+    if (shot) {
+      e.preventDefault();
+      openLb(shot.getAttribute('data-full'), shot.getAttribute('data-cap'));
+      return;
+    }
+    if (e.target === lb) closeLb();
+  });
+  lbClose.addEventListener('click', closeLb);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !lb.hidden) closeLb();
+  });
+})();
+</script>

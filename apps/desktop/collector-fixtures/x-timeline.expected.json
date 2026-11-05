@@ -1,0 +1,33 @@
+[
+  {
+    "shape": "/{any}/status/{num}",
+    "urls": [
+      "/alice/status/3001",
+      "/bob/status/3002",
+      "/carol/status/3003",
+      "/dave/status/3004",
+      "/erin/status/3006",
+      "/alice/status/3007",
+      "/frank/status/3008"
+    ],
+    "ads": ["/brand/status/3005"],
+    "thumbnails": ["/media/3001.jpg", null, "/media/3003.jpg", "/media/3004.jpg", null, "/media/3007.jpg", "/media/3008.jpg"],
+    "groupsInclude": ["/{any}/status/{num}/analytics", "/{any}/status/{num}/photo/{num}"],
+    "groupsExclude": ["/home", "/{any}?", "/alice", "/{any}/{any}"]
+  },
+  {
+    "query": "includeAds=1",
+    "shape": "/{any}/status/{num}",
+    "urls": [
+      "/alice/status/3001",
+      "/bob/status/3002",
+      "/carol/status/3003",
+      "/dave/status/3004",
+      "/brand/status/3005",
+      "/erin/status/3006",
+      "/alice/status/3007",
+      "/frank/status/3008"
+    ],
+    "ads": []
+  }
+]

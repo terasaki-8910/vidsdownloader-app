@@ -1,0 +1,59 @@
+<!doctype html>
+<!-- A generic article list with no media: a site header with a category menu (not a nav
+     element), titles inside each article's own header, tags in each article's footer, a pager
+     and a site footer. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Field notes</title>
+<style>
+  body { margin: 0; font: 16px serif; }
+  .site-header a, .site-footer a { display: inline-block; padding: 8px; }
+  main { width: 720px; margin: 0 auto; }
+  article { padding: 24px 0; }
+  article h2 { margin: 0 0 8px; }
+  article footer a { display: inline-block; padding: 2px 6px; }
+  .pager a { display: inline-block; padding: 6px; }
+</style>
+</head>
+<body>
+<header class="site-header">
+  <a href="/">Field notes</a>
+  <a href="/category/travel">Travel</a>
+  <a href="/category/cooking">Cooking</a>
+  <a href="/category/books">Books</a>
+  <a href="/category/garden">Garden</a>
+</header>
+<main id="list"></main>
+<nav class="pager" aria-label="Pages">
+  <a href="/page/2">2</a> <a href="/page/3">3</a> <a href="/page/4">4</a> <a href="/page/5">5</a>
+  <a href="/page/2">Next</a>
+</nav>
+<footer class="site-footer">
+  <a href="/privacy">Privacy</a> <a href="/terms">Terms</a> <a href="/feed">Feed</a>
+</footer>
+<script>
+  const posts = [
+    ["walking-the-old-road", ["travel", "notes"]],
+    ["bread-without-a-recipe", ["cooking"]],
+    ["three-books-in-winter", ["books", "notes"]],
+    ["the-tomato-year", ["garden"]],
+    ["a-week-by-the-sea", ["travel"]],
+    ["soup-for-cold-days", ["cooking", "notes"]],
+    ["reading-slowly", ["books"]],
+    ["seeds-and-patience", ["garden", "notes"]],
+  ];
+  const list = document.getElementById("list");
+  for (const [slug, tags] of posts) {
+    const article = document.createElement("article");
+    article.innerHTML =
+      `<header><h2><a href="/posts/${slug}">${slug.replace(/-/g, " ")}</a></h2></header>` +
+      `<p>An excerpt of the post, long enough to make the card a real block of text on the page.</p>` +
+      `<footer>${tags.map((tag) => `<a href="/tag/${tag}">${tag}</a>`).join(" ")}</footer>`;
+    list.appendChild(article);
+  }
+</script>
+<script src="/collector.js"></script>
+<script src="/run-scan.js"></script>
+</body>
+</html>

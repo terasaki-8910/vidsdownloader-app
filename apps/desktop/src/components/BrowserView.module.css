@@ -1,0 +1,625 @@
+.browser {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 16px 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.addr {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  margin: 0 6px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  color: var(--muted);
+}
+
+.addr svg {
+  flex: none;
+}
+
+.addr input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+
+.addr input::placeholder {
+  color: var(--muted);
+  font-family: var(--font);
+}
+
+.addr input[aria-invalid="true"] {
+  color: var(--danger);
+}
+
+.addr:focus-within {
+  border-color: var(--accent);
+}
+
+/* The field's own outline would sit inside its border; the border carries focus. */
+.addr input:focus-visible {
+  outline: none;
+}
+
+.chip,
+.chipOn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  margin-right: 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.chipOn {
+  color: var(--accent-ink);
+}
+
+.primary,
+.secondary,
+.ghost {
+  flex: none;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  border-radius: 7px;
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.primary {
+  border: 0;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.secondary {
+  border: 0;
+  background: var(--accent-fill);
+  color: var(--accent-ink);
+}
+
+.ghost {
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+.primary:hover:not(:disabled),
+.secondary:hover:not(:disabled) {
+  filter: brightness(0.97);
+}
+
+.ghost:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.primary:disabled,
+.secondary:disabled,
+.ghost:disabled {
+  opacity: 0.6;
+}
+
+.spin {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loginBanner {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--accent-fill);
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+  font-size: 13.5px;
+}
+
+.bannerIcon {
+  flex: none;
+  color: var(--accent-ink);
+}
+
+.bannerText {
+  flex: 1;
+  min-width: 0;
+}
+
+.error {
+  flex: none;
+  padding: 8px 16px;
+  background: var(--danger-fill);
+  border-bottom: 1px solid var(--line);
+  color: var(--danger);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+/* The native page covers this element; it must fill the rest of the view. */
+.workspace,
+.collectWorkspace {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.collectWorkspace {
+  grid-template-columns: minmax(0, 1fr) 312px;
+}
+
+.stage {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.collectWorkspace .stage {
+  border-right: 1px solid var(--line);
+}
+
+.placeholder {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: var(--muted);
+  font-size: 13.5px;
+  text-align: center;
+}
+
+.start {
+  padding: 24px 28px;
+}
+
+.startTitle {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.siteList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+  max-width: 720px;
+}
+
+.siteRow {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 32px 9em minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 8px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  font-size: 14px;
+}
+
+.siteRow:hover {
+  background: var(--hover);
+}
+
+.siteIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--thumb);
+  color: var(--ink-2);
+  font-weight: 650;
+}
+
+.siteName {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.siteHost {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.siteLogin {
+  color: var(--accent-ink);
+  font-size: 12.5px;
+  text-align: right;
+}
+
+.siteNoLogin {
+  color: var(--muted);
+  font-size: 12.5px;
+  text-align: right;
+}
+
+.addSite {
+  margin: 12px 0 0 -4px;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--accent-ink);
+  font-size: 13px;
+}
+
+.addSite:hover {
+  background: var(--hover);
+}
+
+.tray {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+}
+
+.trayHead {
+  flex: none;
+  display: grid;
+  gap: 8px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.trayTitleRow,
+.progressLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.reloadFindLine {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.trayTitleRow h2 {
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.trayTitleRow h2 span {
+  margin-left: 5px;
+  color: var(--found);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.progressLine {
+  color: var(--muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.textButton {
+  flex: none;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-ink);
+  font: inherit;
+  font-weight: 600;
+}
+
+.textButton:hover {
+  text-decoration: underline;
+}
+
+/* Fixed between the tray head and scrolling body. Its checkbox shares the list rows'
+   18px left edge and 16px column, so the controls form one vertical line. */
+.allRow {
+  flex: none;
+  min-height: 29px;
+  display: grid;
+  grid-template-columns: 16px auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 6px 18px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-2);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.allRow input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--found);
+}
+
+.allCount {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.groupSelect,
+.ruleForm input {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.groupSelect {
+  padding: 0 8px;
+}
+
+.adsNote,
+.xNotice,
+.collectError {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.adsNote,
+.xNotice {
+  color: var(--muted);
+}
+
+.collectError {
+  color: var(--danger);
+}
+
+.foundList {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 6px 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.foundList li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 10px 6px 18px;
+}
+
+.foundList li > label {
+  flex: 1;
+  min-width: 0;
+}
+
+.foundList label {
+  display: grid;
+  grid-template-columns: 16px 64px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.foundList label:not(:has(img)) {
+  grid-template-columns: 16px minmax(0, 1fr);
+}
+
+.foundList input {
+  width: 16px;
+  height: 16px;
+  margin: 1px 0 0;
+  accent-color: var(--found);
+}
+
+.foundList img {
+  width: 64px;
+  aspect-ratio: 16 / 9;
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--thumb);
+}
+
+.foundList span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.collectEmpty {
+  flex: 1;
+  margin: 0;
+  padding: 24px 18px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.trayFoot {
+  flex: none;
+  display: grid;
+  gap: 8px;
+  padding: 12px 18px 16px;
+  border-top: 1px solid var(--line);
+}
+
+.trayFoot > button {
+  justify-content: center;
+}
+
+.ruleForm {
+  display: grid;
+  gap: 9px;
+}
+
+.ruleForm label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ruleForm input {
+  padding: 0 8px;
+  font-family: var(--font);
+}
+
+.ruleForm .secondary {
+  justify-content: center;
+}
+
+.mockGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px 16px;
+  padding: 24px;
+}
+
+.mockCard {
+  position: relative;
+  min-width: 0;
+  padding: 5px;
+  border-radius: 6px;
+  outline: 2.5px solid var(--found);
+  outline-offset: 1px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.mockCard strong {
+  display: block;
+  margin-top: 7px;
+  overflow-wrap: anywhere;
+}
+
+.mockThumb {
+  aspect-ratio: 16 / 9;
+  border-radius: 4px;
+  background: var(--thumb);
+  overflow: hidden;
+}
+
+.mockThumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mockCheck {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--found);
+  color: var(--surface);
+}
+
+/* The address field needs the room first: at 820px the full chip left it about
+   165px. Between 760px and 960px the chip shrinks to its icon (the text stays in
+   the tooltip and for screen readers); below 760px it is hidden, as in the sample. */
+@media (max-width: 960px) {
+  .chip,
+  .chipOn {
+    padding: 0 7px;
+  }
+
+  .chipText {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 760px) {
+  .chip,
+  .chipOn {
+    display: none;
+  }
+
+  .start {
+    padding: 20px 16px;
+  }
+
+  .siteRow {
+    grid-template-columns: 32px minmax(0, 1fr) auto;
+    row-gap: 2px;
+  }
+
+  .siteHost {
+    display: none;
+  }
+}
+
+/* Post texts can be long: keep each found item to three lines; the full text is in the
+   title attribute. */
+.foundList li span {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}

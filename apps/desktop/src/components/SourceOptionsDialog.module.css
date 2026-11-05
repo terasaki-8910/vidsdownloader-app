@@ -1,0 +1,94 @@
+/* The destination and quality dialog: ConfirmDialog's box, a little wider for folder paths. */
+.dialog {
+  width: 440px;
+}
+
+.fields {
+  margin-top: 16px;
+  display: grid;
+  gap: 18px;
+}
+
+/* The folder box and its button, as in Settings > General. */
+.folderControl {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.folderBox {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Quiet, under the box: putting the folder back is the rare choice. */
+.reset {
+  align-self: flex-start;
+  height: 30px;
+  padding: 0 10px;
+  margin-left: -10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--accent-ink);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.reset:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.reset:disabled {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+.select {
+  max-width: 100%;
+}
+
+.error {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+
+/* The same size as ConfirmDialog's buttons: 34px, 13.5px, 7px radius. */
+.cancel,
+.save {
+  height: 34px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 7px;
+  font-size: 13.5px;
+  white-space: nowrap;
+}
+
+/* The way out, without a fill. */
+.cancel {
+  background: transparent;
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+.cancel:hover {
+  background: var(--hover);
+}
+
+/* The tinted button the app uses for the one thing to do next. */
+.save {
+  background: var(--accent-fill);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.save:hover:not(:disabled) {
+  filter: brightness(0.97);
+}
+
+.save:disabled {
+  opacity: 0.6;
+}

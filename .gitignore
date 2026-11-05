@@ -1,0 +1,16 @@
+*.log
+# per-machine permission overrides (e.g. re-denying git push) -- personal, not shared.
+.claude/settings.local.json
+.DS_Store
+node_modules/
+__pycache__/
+dist/
+coverage/
+# secrets -- never commit.
+.env
+.env.*
+!.env.example
+target/
+/vendor/
+/.cargo/
+/.cargo-home/

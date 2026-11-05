@@ -1,0 +1,96 @@
+.prog {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+  max-width: 560px;
+}
+
+.bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--track);
+  overflow: hidden;
+}
+
+.bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.bar.busy span {
+  width: 26%;
+  background: var(--ink-2);
+  opacity: 0.6;
+  animation: busySlide 1.4s ease-in-out infinite;
+}
+
+.bar.indeterminate span {
+  width: 40%;
+  animation: indeterminateSlide 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes indeterminateSlide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+@keyframes busySlide {
+  0% {
+    margin-left: 0%;
+  }
+  50% {
+    margin-left: 74%;
+  }
+  100% {
+    margin-left: 0%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar.busy span,
+  .bar.indeterminate span {
+    width: 100%;
+    margin-left: 0;
+    transform: none;
+    animation: none;
+    opacity: 0.35;
+  }
+}
+
+.pstat {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 14px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.state {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.state.err {
+  color: var(--danger);
+}
+
+.path {
+  font-size: 12.5px;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  max-width: 520px;
+}

@@ -1,0 +1,74 @@
+[package]
+name = "vidsdownloader"
+version = "0.1.6"
+description = "vidsdownloader desktop app (Tauri shell)"
+edition = "2024"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "vidsdownloader_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["unstable"] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+vids-core = { path = "../../../crates/core" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-dialog = "~2.8.4"
+# Moves a saved item's files to the Recycle Bin / Trash.
+trash = "5.2.9"
+# In-app updates (check, download, install) and the restart after an install. Pinned to the
+# releases whose `tauri` requirement (^2.12) accepts the locked tauri 2.12.x, so adding them
+# does not upgrade tauri / wry / tao.
+tauri-plugin-updater = "~2.14.1"
+tauri-plugin-process = "~2.4.0"
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+# WebView2 settings the Tauri API does not expose (browser shortcuts, context menu, the
+# HTTP cache), the shell's "Open with" dialog, and toast notifications (WinRT toasts, the
+# AppUserModelID and its registry entry, the foreground window).
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.39.1"
+windows-core = "0.62"
+windows = { version = "0.62.2", features = [
+    "Data_Xml_Dom",
+    "Foundation",
+    "UI_Notifications",
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Com",
+    "Win32_System_Registry",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+# Pull JSON results from the untrusted WKWebView without giving remote pages IPC.
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = { version = "0.6.2", default-features = false, features = ["std"] }
+objc2 = { version = "0.6.5", default-features = false, features = ["std"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "block2",
+    "NSData",
+    "NSError",
+    "NSJSONSerialization",
+    "NSObject",
+    "NSString",
+] }
+objc2-web-kit = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "block2",
+    "WKWebView",
+] }

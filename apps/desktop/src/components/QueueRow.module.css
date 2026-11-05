@@ -1,0 +1,160 @@
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+  padding: 14px 20px 14px 28px;
+  border-bottom: 1px solid var(--line);
+  width: 100%;
+  text-align: left;
+  background: none;
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+}
+
+.row:hover {
+  background: var(--hover);
+}
+
+.row.selected,
+.row.selected:hover {
+  background: var(--accent-fill);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.content {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.thumb {
+  width: 128px;
+  aspect-ratio: 16 / 9;
+  border-radius: 6px;
+  background: var(--thumb);
+  position: relative;
+  display: grid;
+  place-items: center;
+  color: var(--thumb-ink);
+  overflow: hidden;
+  flex: none;
+}
+
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.dur {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  background: var(--dur-bg);
+  color: var(--dur-ink);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.6;
+}
+
+.body {
+  min-width: 0;
+}
+
+.title {
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 12px;
+  margin-top: 3px;
+  font-size: 12.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.actions {
+  display: flex;
+  gap: 2px;
+}
+
+/* Tinted text button in the same fixed spot as the icon actions: the row
+   stopped for a login, and the login is the one thing to do next. */
+.loginAction {
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--accent-fill);
+  color: var(--accent-ink);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.loginAction:hover {
+  filter: brightness(0.97);
+}
+
+/* Same fixed spot as the icon actions, quieter than the login action: saving
+   again is a low-frequency choice, not the next step. */
+.textAction {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.textAction:hover {
+  background: var(--hover);
+}
+
+.textAction:disabled {
+  color: var(--muted);
+  opacity: 0.6;
+  cursor: default;
+}
+
+.textAction:disabled:hover {
+  background: var(--surface);
+}
+
+/* One line under the state line when a list could not be registered as a source. */
+.notice {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+
+.commentNotice {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}

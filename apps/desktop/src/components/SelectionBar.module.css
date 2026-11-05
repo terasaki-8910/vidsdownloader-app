@@ -1,0 +1,25 @@
+.bar {
+  min-width: 0;
+  width: 100%;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.summary {
+  margin-right: 4px;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.danger {
+  color: var(--danger);
+}
+
+.clear {
+  margin-left: auto;
+}

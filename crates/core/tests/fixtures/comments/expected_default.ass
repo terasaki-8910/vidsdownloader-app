@@ -1,0 +1,52 @@
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1280
+PlayResY: 720
+WrapStyle: 2
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Danmaku,BIZ UDPGothic,45,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,7,0,0,0,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.10,0:00:04.10,Danmaku,,0,0,0,,{\an7\move(1280,0,-450,0)\fs45\c&HFFFFFF&\alpha&H00&}見本用のコメントです
+Dialogue: 0,0:00:00.30,0:00:04.30,Danmaku,,0,0,0,,{\an7\move(1280,56,-135,56)\fs45\c&HFFFFFF&\alpha&H00&}うぽつ
+Dialogue: 0,0:00:00.45,0:00:04.45,Danmaku,,0,0,0,,{\an7\move(1280,112,-59,112)\fs29\c&HFFFFFF&\alpha&H00&}初見
+Dialogue: 0,0:00:00.60,0:00:04.60,Danmaku,,0,0,0,,{\an7\move(1280,169,-180,169)\fs45\c&HFFFFFF&\alpha&H00&}待ってた
+Dialogue: 0,0:00:00.70,0:00:04.70,Danmaku,,0,0,0,,{\an7\move(1280,225,-504,225)\fs72\c&H00FFFF&\alpha&H00&}きたあああああ
+Dialogue: 0,0:00:00.90,0:00:04.90,Danmaku,,0,0,0,,{\an7\move(1280,56,-225,56)\fs45\c&HFFFFFF&\alpha&H00&}うぽつです
+Dialogue: 1,0:00:01.00,0:00:04.00,Danmaku,,0,0,0,,{\an8\pos(640,0)\fs45\c&H0000FF&\alpha&H00&}ここから見どころ
+Dialogue: 0,0:00:01.10,0:00:05.10,Danmaku,,0,0,0,,{\an7\move(1280,112,-124,112)\fs45\c&HFFFFFF&\alpha&H00&}wwwww
+Dialogue: 0,0:00:01.20,0:00:05.20,Danmaku,,0,0,0,,{\an7\move(1280,169,-180,169)\fs45\c&H8080FF&\alpha&H00&}ここすき
+Dialogue: 0,0:00:01.30,0:00:05.30,Danmaku,,0,0,0,,{\an7\move(1280,281,-248,281)\fs45\c&HFFFFFF&\alpha&H00&}8888888888
+Dialogue: 0,0:00:01.35,0:00:05.35,Danmaku,,0,0,0,,{\an7\move(1280,338,-198,338)\fs45\c&HFFFFFF&\alpha&H00&}88888888
+Dialogue: 0,0:00:01.40,0:00:05.40,Danmaku,,0,0,0,,{\an7\move(1280,394,-297,394)\fs45\c&HFFFFFF&\alpha&H00&}888888888888
+Dialogue: 0,0:00:01.45,0:00:05.45,Danmaku,,0,0,0,,{\an7\move(1280,450,-81,450)\fs29\c&HFFFFFF&\alpha&H00&}88888
+Dialogue: 0,0:00:01.50,0:00:05.50,Danmaku,,0,0,0,,{\an7\move(1280,506,-144,506)\fs72\c&HFFFFFF&\alpha&H00&}神回
+Dialogue: 0,0:00:01.55,0:00:05.55,Danmaku,,0,0,0,,{\an7\move(1280,562,-322,562)\fs45\c&HFFFFFF&\alpha&H00&}8888888888888
+Dialogue: 0,0:00:01.60,0:00:05.60,Danmaku,,0,0,0,,{\an7\move(1280,56,-225,56)\fs45\c&HFFFFFF&\alpha&H00&}うますぎる
+Dialogue: 0,0:00:01.65,0:00:05.65,Danmaku,,0,0,0,,{\an7\move(1280,619,-273,619)\fs45\c&HFFFFFF&\alpha&H00&}88888888888
+Dialogue: 0,0:00:01.75,0:00:05.75,Danmaku,,0,0,0,,{\an7\move(1280,112,-149,112)\fs45\c&HFFFFFF&\alpha&H00&}888888
+Dialogue: 0,0:00:01.80,0:00:05.80,Danmaku,,0,0,0,,{\an7\move(1280,169,-225,169)\fs45\c&HFFFFFF&\alpha&H00&}鳥肌立った
+Dialogue: 0,0:00:01.90,0:00:05.90,Danmaku,,0,0,0,,{\an7\move(1280,225,-88,225)\fs29\c&HFFFFFF&\alpha&H00&}すごい
+Dialogue: 1,0:00:02.00,0:00:05.00,Danmaku,,0,0,0,,{\an2\pos(640,720)\fs45\c&HFFFFFF&\alpha&H00&}ここまで1分
+Dialogue: 0,0:00:02.05,0:00:06.05,Danmaku,,0,0,0,,{\an7\move(1280,281,-223,281)\fs45\c&HFFFFFF&\alpha&H00&}888888888
+Dialogue: 0,0:00:02.10,0:00:06.10,Danmaku,,0,0,0,,{\an7\move(1280,338,-248,338)\fs45\c&HFFFFFF&\alpha&H00&}wwwwwwwwww
+Dialogue: 0,0:00:02.20,0:00:06.20,Danmaku,,0,0,0,,{\an7\move(1280,450,-225,450)\fs45\c&H00C0FF&\alpha&H00&}うおおおお
+Dialogue: 0,0:00:02.30,0:00:06.30,Danmaku,,0,0,0,,{\an7\move(1280,394,-360,394)\fs45\c&HFFFFFF&\alpha&H00&}何回でも見られる
+Dialogue: 0,0:00:02.40,0:00:06.40,Danmaku,,0,0,0,,{\an7\move(1280,506,-372,506)\fs45\c&HFFFFFF&\alpha&H00&}888888888888888
+Dialogue: 0,0:00:02.50,0:00:06.50,Danmaku,,0,0,0,,{\an7\move(1280,56,-144,56)\fs72\c&H00FF00&\alpha&H00&}最高
+Dialogue: 0,0:00:02.60,0:00:06.60,Danmaku,,0,0,0,,{\an7\move(1280,112,-135,112)\fs45\c&HFFFFFF&\alpha&H00&}わかる
+Dialogue: 0,0:00:02.70,0:00:06.70,Danmaku,,0,0,0,,{\an7\move(1280,169,-315,169)\fs45\c&HFFFFFF&\alpha&H00&}ここの演出好き
+Dialogue: 1,0:00:02.90,0:00:05.90,Danmaku,,0,0,0,,{\an8\pos(640,56)\fs45\c&HFFFFFF&\alpha&H00&}弾幕職人ありがとう
+Dialogue: 0,0:00:03.00,0:00:07.00,Danmaku,,0,0,0,,{\an7\move(1280,225,-65,225)\fs29\c&HFFFFFF&\alpha&H00&}wwww
+Dialogue: 0,0:00:03.20,0:00:07.20,Danmaku,,0,0,0,,{\an7\move(1280,112,-100,112)\fs45\c&HFFFFFF&\alpha&H00&}8888
+Dialogue: 0,0:00:03.40,0:00:07.40,Danmaku,,0,0,0,,{\an7\move(1280,281,-225,281)\fs45\c&HFFFFFF&\alpha&H00&}また来ます
+Dialogue: 0,0:00:03.60,0:00:07.60,Danmaku,,0,0,0,,{\an7\move(1280,169,-273,169)\fs45\c&HFFFFFF&\alpha&H00&}88888888888
+Dialogue: 0,0:00:03.80,0:00:07.80,Danmaku,,0,0,0,,{\an7\move(1280,112,-225,112)\fs45\c&H00FFFF&\alpha&H00&}ありがとう
+Dialogue: 0,0:00:04.00,0:00:08.00,Danmaku,,0,0,0,,{\an7\move(1280,0,-90,0)\fs45\c&HFFFFFF&\alpha&H00&}おつ
+Dialogue: 0,0:00:04.30,0:00:08.30,Danmaku,,0,0,0,,{\an7\move(1280,225,-315,225)\fs45\c&HFFFFFF&\alpha&H00&}もう一回見よう
+Dialogue: 0,0:00:04.60,0:00:08.60,Danmaku,,0,0,0,,{\an7\move(1280,0,-149,0)\fs45\c&HFFFFFF&\alpha&H00&}888888
+Dialogue: 0,0:00:05.00,0:00:09.00,Danmaku,,0,0,0,,{\an7\move(1280,169,-648,169)\fs72\c&HFFFFFF&\alpha&H00&}おつかれさまでした

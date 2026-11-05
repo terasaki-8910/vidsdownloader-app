@@ -1,0 +1,25 @@
+[debug] Command-line config: ['-v', '--ignore-config', '--no-update', '--js-runtimes', 'deno:C:\\Users\\e8910\\Documents\\vidsdownloader.worktrees\\spike-m1\\spikes\\m1\\bin\\deno.exe', '--ffmpeg-location', 'C:\\Users\\e8910\\Documents\\vidsdownloader.worktrees\\spike-m1\\spikes\\m1\\bin', '--simulate', 'https://www.youtube.com/watch?v=BaW_jenozKc']
+[debug] Encodings: locale cp932, fs utf-8, pref cp932, out cp932 (No ANSI), error cp932 (No ANSI), screen cp932 (No ANSI)
+[debug] yt-dlp version stable@2026.10.26 from yt-dlp/yt-dlp [c91f8de0b] (win_exe)
+[debug] Python 3.14.10 (CPython AMD64 64bit) - Windows-11-10.0.26220-SP0 (OpenSSL 3.5.9 29 Sep 2026)
+[debug] exe versions: ffmpeg N-128280-ga88838af48-20261101 (setts), ffprobe N-128280-ga88838af48-20261101
+[debug] Optional libraries: Cryptodome-3.24.1, brotli-1.2.1, certifi-2026.10.23, curl_cffi-0.17.0, mutagen-1.48.1, requests-2.34.2, sqlite3-3.50.4, urllib3-2.8.0, websockets-17.3, yt_dlp_ejs-0.8.0
+[debug] JS runtimes: deno-2.9.8
+[debug] Proxy map: {'no': '127.0.0.1,localhost,::1'}
+[debug] Request Handlers: urllib, requests, websockets, curl_cffi
+[debug] Plugin directories: none
+[debug] Loaded 1747 extractors
+[debug] [youtube] [pot] PO Token Providers: none
+[debug] [youtube] [pot] PO Token Cache Providers: memory
+[debug] [youtube] [pot] PO Token Cache Spec Providers: webpo
+[debug] [youtube] [jsc] JS Challenge Providers: bun (unavailable), deno, node (unavailable), quickjs (unavailable)
+[debug] [youtube] Forcing "main" player JS variant for player 11a45ffb
+        original url = /s/player/11a45ffb/player_es6.vflset/en_US/base.js
+[debug] [youtube] BaW_jenozKc: tv_samsung player response playability status: ERROR
+[debug] [youtube] BaW_jenozKc: visionos player response playability status: ERROR
+[debug] [youtube] BaW_jenozKc: web player response playability status: ERROR
+ERROR: [youtube] BaW_jenozKc: This video is unavailable
+  File "yt_dlp\extractor\common.py", line 764, in extract
+  File "yt_dlp\extractor\youtube\_video.py", line 4083, in _real_extract
+  File "yt_dlp\extractor\common.py", line 1271, in raise_no_formats
+

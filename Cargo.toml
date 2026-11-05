@@ -1,0 +1,16 @@
+[workspace]
+members = ["crates/core", "apps/desktop/src-tauri"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+license = "UNLICENSED"
+publish = false
+
+# Read https://tauri.app/concept/size/ before changing.
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

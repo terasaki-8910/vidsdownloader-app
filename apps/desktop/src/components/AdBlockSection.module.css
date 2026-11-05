@@ -1,0 +1,20 @@
+/* The row, header, badge and name styles are SitesSection's. */
+
+/* The lead is SitesSection's; balanced so it breaks between the two sentences instead of
+   leaving "す。" alone on a second line. */
+.lead {
+  word-break: auto-phrase;
+  text-wrap: balance;
+}
+
+/* One-line rows: at least 52px, the header centered in it. */
+.row {
+  min-height: 52px;
+  align-content: center;
+}
+
+/* Switch aligns itself to the start of a flex container; center it in the header instead. */
+.switchCell {
+  display: flex;
+  align-items: center;
+}

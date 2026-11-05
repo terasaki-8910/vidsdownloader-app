@@ -1,0 +1,31 @@
+/* The second and third button of the first-check dialog. Same size as ConfirmDialog's buttons
+   (34px, 13.5px, 7px radius). */
+.saveAll,
+.cancel {
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 7px;
+  font-size: 13.5px;
+  white-space: nowrap;
+}
+
+/* The app's quiet outlined button (QueueRow's text action). */
+.saveAll {
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* The way out, without a fill. */
+.cancel {
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+.saveAll:hover,
+.cancel:hover {
+  background: var(--hover);
+}

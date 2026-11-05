@@ -1,0 +1,18 @@
+[
+  {
+    "shape": "/posts/{any}",
+    "urls": [
+      "/posts/walking-the-old-road",
+      "/posts/bread-without-a-recipe",
+      "/posts/three-books-in-winter",
+      "/posts/the-tomato-year",
+      "/posts/a-week-by-the-sea",
+      "/posts/soup-for-cold-days",
+      "/posts/reading-slowly",
+      "/posts/seeds-and-patience"
+    ],
+    "ads": [],
+    "groupsInclude": ["/tag/{any}"],
+    "groupsExclude": ["/category", "/page", "/privacy", "/{any}"]
+  }
+]

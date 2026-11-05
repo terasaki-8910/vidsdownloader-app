@@ -1,0 +1,30 @@
+.detail {
+  flex: 0 0 auto;
+  width: 0;
+  overflow: hidden;
+  border-left: 0 solid var(--line);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  transition: width 220ms ease, border-left-width 220ms ease;
+}
+
+.detail.open {
+  width: 360px;
+  border-left-width: 1px;
+}
+
+.header {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 10px 0;
+}
+
+.content {
+  flex: 1;
+  min-height: 0;
+  min-width: 360px;
+  overflow: auto;
+  padding: 6px 22px 18px;
+}

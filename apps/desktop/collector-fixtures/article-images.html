@@ -1,0 +1,122 @@
+<!doctype html>
+<!-- A generic article whose own images are not links: a site header with a banner and a nav,
+     the article (title, a small author avatar, six images: one plain in a figure, one wrapped
+     in a lightbox link to its own .jpg, one without alt in a paragraph, one in a <picture>,
+     one plain, one lazy with only a srcset far down the page: its largest candidate (1280w)
+     is taken, not the 640w one the browser picks for the slot), eleven hashtag links with small
+     SVG icons in the article's footer, four related-article cards with thumbnails inside
+     links, and a site footer with a sponsor image. JSON-LD (one malformed block first) carries
+     the author and the publish date. Images have no real files; their size comes from their
+     width/height attributes. -->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>庭の記録 十月 | Field Journal</title>
+<meta property="og:title" content="庭の記録 十月">
+<meta name="author" content="Field Journal 編集部">
+<script type="application/ld+json">{ "broken": </script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    { "@type": "WebSite", "name": "Field Journal" },
+    {
+      "@type": "Article",
+      "headline": "庭の記録 十月",
+      "author": [{ "@type": "Person", "name": "森 かなで" }, { "@type": "Person", "name": "Second Author" }],
+      "datePublished": "2026-10-30T09:00:00+09:00"
+    }
+  ]
+}
+</script>
+<style>
+  body { margin: 0; font: 16px/1.7 sans-serif; }
+  .site-header { padding: 8px 16px; }
+  .site-header img { display: block; }
+  .site-header nav a { display: inline-block; padding: 8px; }
+  main { width: 720px; margin: 0 auto; }
+  article img { display: block; }
+  .author { display: flex; gap: 8px; align-items: center; }
+  .author img { width: 40px; height: 40px; border-radius: 50%; }
+  .long { height: 3200px; }
+  .tags a { display: inline-flex; gap: 4px; align-items: center; padding: 2px 8px; }
+  .tags img { display: inline-block; width: 12px; height: 12px; }
+  .related ul { list-style: none; margin: 0; padding: 0; }
+  .related a { display: flex; gap: 12px; padding: 8px 0; }
+  .related img { display: block; width: 160px; height: 90px; }
+  .site-footer { padding: 16px; }
+  .site-footer a { display: inline-block; padding: 8px; }
+</style>
+</head>
+<body>
+<header class="site-header">
+  <img src="/brand/banner.jpg" width="1200" height="120" alt="Field Journal">
+  <nav>
+    <a href="/">ホーム</a> <a href="/archive">アーカイブ</a> <a href="/about">このサイトについて</a>
+    <a href="/topics/garden">庭</a> <a href="/topics/kitchen">台所</a>
+  </nav>
+</header>
+<main>
+  <article>
+    <header>
+      <h1>庭の記録 十月</h1>
+      <div class="author">
+        <img src="/avatars/kanade.jpg" width="40" height="40" alt="森 かなで">
+        <a href="/u/kanade">森 かなで</a>
+        <time datetime="2026-10-31T12:00:00+09:00">2026年10月31日</time>
+      </div>
+    </header>
+    <p>十月の庭は、夏の名残と冬の支度が同じ日に並びます。朝の光が低くなり、影が長く伸びるようになりました。</p>
+    <figure>
+      <img src="/images/garden-01.jpg" width="640" height="427" alt="  朝の庭  ">
+      <figcaption>朝の庭。霜はまだ降りていません。</figcaption>
+    </figure>
+    <p>球根を植える前に、土を掘り返して古い根を取り除きました。手が冷たくなる季節です。</p>
+    <figure>
+      <a href="/images/garden-02.jpg"><img src="/images/garden-02.jpg" width="640" height="480" alt="掘り返した土"></a>
+    </figure>
+    <p><img src="/images/garden-03.jpg" width="480" height="320"></p>
+    <p>今年はチューリップを三色、合わせて四十球。去年より少し多めです。</p>
+    <picture>
+      <source type="image/webp" srcset="/images/garden-04.webp">
+      <img src="/images/garden-04.jpg" width="640" height="400" alt="チューリップの球根">
+    </picture>
+    <figure>
+      <img src="/images/garden-05.png" width="600" height="600" alt="植え付けの図">
+    </figure>
+    <p class="long">ここから先は長い記録が続きます。水やりの回数、気温、土の湿り気、鳥が来た日のこと。</p>
+    <figure>
+      <img loading="lazy" srcset="/images/garden-06-320.jpg 320w, /images/garden-06-1280.jpg 1280w, /images/garden-06-640.jpg 640w" sizes="640px" width="640" height="427" alt="夕方の庭">
+    </figure>
+    <footer class="tags">
+      <a href="/hashtag/庭"><img src="/icons/tag.svg" alt="">庭</a>
+      <a href="/hashtag/球根"><img src="/icons/tag.svg" alt="">球根</a>
+      <a href="/hashtag/チューリップ"><img src="/icons/tag.svg" alt="">チューリップ</a>
+      <a href="/hashtag/十月"><img src="/icons/tag.svg" alt="">十月</a>
+      <a href="/hashtag/土づくり"><img src="/icons/tag.svg" alt="">土づくり</a>
+      <a href="/hashtag/ガーデニング"><img src="/icons/tag.svg" alt="">ガーデニング</a>
+      <a href="/hashtag/暮らし"><img src="/icons/tag.svg" alt="">暮らし</a>
+      <a href="/hashtag/季節"><img src="/icons/tag.svg" alt="">季節</a>
+      <a href="/hashtag/日記"><img src="/icons/tag.svg" alt="">日記</a>
+      <a href="/hashtag/写真"><img src="/icons/tag.svg" alt="">写真</a>
+      <a href="/hashtag/秋"><img src="/icons/tag.svg" alt="">秋</a>
+    </footer>
+  </article>
+  <section class="related">
+    <h2>関連する記事</h2>
+    <ul>
+      <li><a href="/posts/september-garden"><img src="/thumbs/september.jpg" alt=""><span>九月の庭</span></a></li>
+      <li><a href="/posts/bulbs-in-pots"><img src="/thumbs/pots.jpg" alt=""><span>鉢で育てる球根</span></a></li>
+      <li><a href="/posts/winter-soil"><img src="/thumbs/soil.jpg" alt=""><span>冬の土づくり</span></a></li>
+      <li><a href="/posts/first-frost"><img src="/thumbs/frost.jpg" alt=""><span>初霜の朝</span></a></li>
+    </ul>
+  </section>
+</main>
+<footer class="site-footer">
+  <img src="/sponsors/seed-shop.jpg" width="300" height="100" alt="種の店">
+  <a href="/privacy">プライバシー</a> <a href="/terms">利用規約</a> <a href="/contact">お問い合わせ</a>
+</footer>
+<script src="/collector.js"></script>
+<script src="/run-scan.js"></script>
+</body>
+</html>

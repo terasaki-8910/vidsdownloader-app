@@ -1,0 +1,114 @@
+/*
+ * Design tokens. The only file under src/ allowed to contain hex/rgb literals
+ * (enforced by scripts/lint-ui.js). Everything else references these custom
+ * properties with var(...).
+ *
+ * Values are reused exactly from apps/desktop/design/round3-mock.html (round 3
+ * direction: pure-grey neutrals, blue accent). The mock's "found" green and its
+ * accent switcher are dropped -- this app only ever renders the blue accent, and
+ * there is no collecting screen in this milestone.
+ *
+ * Theme resolution:
+ *   - :root carries the light values (the default, no attribute needed).
+ *   - prefers-color-scheme: dark swaps to dark values UNLESS data-theme="light"
+ *     is set on <html> (Settings > theme = "system" means no data-theme attribute
+ *     at all, so this media query alone decides it).
+ *   - :root[data-theme="dark"] forces dark regardless of OS preference.
+ *   - :root[data-theme="light"] forces light regardless of OS preference (handled
+ *     by simply not matching the two dark rules above).
+ */
+
+:root {
+  /* Neutrals: pure greys, no hue tint. */
+  --app-bg: #F2F2F2;
+  --surface: #FFFFFF;
+  --sidebar: #E8E8E8;
+  --ink: #191919;
+  --ink-2: #474747;
+  --muted: #6A6A6A;
+  --line: #E1E1E1;
+  --line-strong: #C8C8C8;
+  --hover: rgba(0, 0, 0, 0.05);
+  --track: #E4E4E4;
+  --thumb: #D9D9D9;
+  --thumb-ink: #8C8C8C;
+  --dur-bg: rgba(0, 0, 0, 0.72);
+  --dur-ink: #FFFFFF;
+  --danger: #C4302B;
+  --danger-fill: rgba(196, 48, 43, 0.08);
+  --shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
+  /* Backdrop scrim for the Settings dialog and the narrow-width detail sheet.
+     Not in the mock (it has no modal/overlay state); added here for the same
+     neutral family. */
+  --scrim: rgba(0, 0, 0, 0.32);
+
+  /* Accent: blue (round 3 decision R3-2 B). */
+  --accent: #1F63D6;
+  --found: #1E9E56;
+  --on-accent: #FFFFFF;
+  --accent-ink: #1A55B8;
+  --accent-fill: rgba(31, 99, 214, 0.10);
+  --focus-ring: var(--accent);
+
+  --font: "Segoe UI Variable Text", "Segoe UI", "Yu Gothic UI", "Hiragino Sans", system-ui, sans-serif;
+  --mono: "Cascadia Mono", "SF Mono", Consolas, monospace;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --app-bg: #0F0F0F;
+    --surface: #181818;
+    --sidebar: #131313;
+    --ink: #EDEDED;
+    --ink-2: #C2C2C2;
+    --muted: #999999;
+    --line: #2A2A2A;
+    --line-strong: #3B3B3B;
+    --hover: rgba(255, 255, 255, 0.06);
+    --track: #2E2E2E;
+    --thumb: #2B2B2B;
+    --thumb-ink: #6E6E6E;
+    --danger: #FF6B61;
+    --danger-fill: rgba(255, 107, 97, 0.10);
+    --shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+    --scrim: rgba(0, 0, 0, 0.5);
+
+    --accent: #5C9DFF;
+    --found: #46D483;
+    --on-accent: #0A1424;
+    --accent-ink: #7DB0FF;
+    --accent-fill: rgba(92, 157, 255, 0.14);
+
+    color-scheme: dark;
+  }
+}
+
+/* Keep in sync with the media-query block above. */
+:root[data-theme="dark"] {
+  --app-bg: #0F0F0F;
+  --surface: #181818;
+  --sidebar: #131313;
+  --ink: #EDEDED;
+  --ink-2: #C2C2C2;
+  --muted: #999999;
+  --line: #2A2A2A;
+  --line-strong: #3B3B3B;
+  --hover: rgba(255, 255, 255, 0.06);
+  --track: #2E2E2E;
+  --thumb: #2B2B2B;
+  --thumb-ink: #6E6E6E;
+  --danger: #FF6B61;
+  --danger-fill: rgba(255, 107, 97, 0.10);
+  --shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  --scrim: rgba(0, 0, 0, 0.5);
+
+  --accent: #5C9DFF;
+  --found: #46D483;
+  --on-accent: #0A1424;
+  --accent-ink: #7DB0FF;
+  --accent-fill: rgba(92, 157, 255, 0.14);
+
+  color-scheme: dark;
+}

@@ -1,0 +1,102 @@
+/* The folder menu under the 保存先 control in the URL bar. */
+.wrap {
+  position: relative;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 260px;
+}
+
+/* UrlBar's .folderButton already sets its own max-width; the wrapper owns it here. */
+.button {
+  width: 100%;
+  max-width: none;
+}
+
+.popover {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 440px;
+  max-width: calc(100vw - 48px);
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.heading {
+  padding: 6px 10px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.item {
+  width: 100%;
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.item:hover {
+  background: var(--hover);
+}
+
+/* In a menu the highlighted item IS the focus indicator; keyboard focus adds an
+   inset ring on top so it never relies on the tint alone. */
+.item:focus {
+  background: var(--accent-fill);
+}
+
+.item:focus-visible {
+  border-radius: 6px;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.mark {
+  display: grid;
+  place-items: center;
+  color: var(--accent-ink);
+}
+
+.path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.separator {
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--line);
+}
+
+/* When the controls wrap onto their own row the control sits mid-row, and a 440px menu
+   anchored to its right edge would run under the sidebar (the page clips it). Anchor it
+   to the whole row instead (UrlBar's .controls is the positioned ancestor). */
+@container downloads (max-width: 760px) {
+  .wrap {
+    position: static;
+  }
+
+  .popover {
+    left: 0;
+    right: 0;
+    width: auto;
+    max-width: none;
+  }
+}

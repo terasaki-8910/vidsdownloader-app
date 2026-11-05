@@ -1,0 +1,736 @@
+(() => {
+  const MARK_CLASS = "vdl-collector-found";
+  const BADGE_CLASS = "vdl-collector-badge";
+  const REVEAL_CLASS = "vdl-collector-reveal";
+  const STYLE_ID = "vdl-collector-style";
+  // The script is evaluated again for every call, so what must outlive one call lives on window:
+  // the card last seen for each item URL, for reveal(), and the number given to each page
+  // image, so a later scan that finds more images keeps the earlier numbers.
+  const memory =
+    window.__vdlCollectorMemory ||
+    (window.__vdlCollectorMemory = { cards: new Map(), imagesPage: null, imageIndex: new Map() });
+  if (!memory.imageIndex) memory.imageIndex = new Map();
+  // The reserved shape of the group holding the page's own images (not inside links).
+  const IMAGES_SHAPE = "{images}";
+  // At most this many URLs of the best link group are listed under the images.
+  const MAX_OTHER_LINKS = 200;
+  // A link to an image file opens that image (a lightbox), not another page.
+  const IMAGE_FILE = /\.(?:jpe?g|png|gif|webp|avif)$/i;
+  const MIN_GROUP_URLS = 3;
+  const MAX_GROUP_URLS = 2000;
+  // A query value that reads as a word stays literal while its parameter has at most this
+  // many such values on the page (tabs such as f=live, f=media); more make it {id}.
+  const MAX_WORD_VALUES = 5;
+  // A path position holding at least this many different words, among links of the same
+  // length and query names, is a variable part ({any}): the user name in X post links, or
+  // photo / video in X media tiles (a grid mixing both is one list).
+  const MIN_VARIANTS = 2;
+  // Images smaller than this are icons or avatars, never media or thumbnails.
+  const MIN_MEDIA_SIDE = 64;
+  const MIN_MEDIA_AREA = 10000;
+  const AD_LABELS = new Set(["広告", "ad", "ads", "promoted", "sponsored", "スポンサー", "プロモーション"]);
+  // Links in these are navigation (menus, tabs, the site's header and footer), never items.
+  const NAV_SELECTOR =
+    "nav, [role=navigation], [role=tablist], [role=tab], [role=menubar], [role=menu], [role=banner], [role=contentinfo]";
+
+  function normalizedHost(host) {
+    return host.toLowerCase().replace(/^www\./, "");
+  }
+
+  function isSameSite(url) {
+    const pageHost = location.hostname.toLowerCase();
+    const baseHost = normalizedHost(pageHost);
+    const candidate = url.hostname.toLowerCase();
+    return candidate === pageHost || candidate === baseHost || candidate.endsWith(`.${baseHost}`);
+  }
+
+  function isPlaceholder(token) {
+    return token === "{num}" || token === "{id}" || token === "{any}" || token === "{slug}";
+  }
+
+  function compareNames(a, b) {
+    return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0;
+  }
+
+  function segmentShape(segment) {
+    if (/^\d+$/.test(segment)) return "{num}";
+    // An id mixes letters and digits, or mixes upper and lower case (YouTube-like ids).
+    // Plain words with underscores or hyphens ("header_photo") stay literal.
+    if (segment.length >= 8 && /^[A-Za-z0-9_-]+={0,2}$/.test(segment)) {
+      const mixesLettersAndDigits = /[A-Za-z]/.test(segment) && /\d/.test(segment);
+      const mixesCase = segment.length >= 10 && /[a-z]/.test(segment) && /[A-Z]/.test(segment);
+      if (mixesLettersAndDigits || mixesCase) return "{id}";
+    }
+    return segment;
+  }
+
+  function isWordLike(value) {
+    return /^[A-Za-z][A-Za-z_-]{0,23}$/.test(value) && segmentShape(value) === value;
+  }
+
+  function queryToken(name, value, wordValues) {
+    if (value === "") return "";
+    if (/^\d+$/.test(value)) return "{num}";
+    if (isWordLike(value) && wordValues.get(name).size <= MAX_WORD_VALUES) return encodeURIComponent(value);
+    return "{id}";
+  }
+
+  function shapeString(path, query) {
+    const head = `/${path.join("/")}`;
+    return query.length ? `${head}?${query.map(([name, token]) => `${name}=${token}`).join("&")}` : head;
+  }
+
+  // A shape is also a pattern: a saved rule or the user's choice is matched against every link,
+  // so it keeps working when the page's own statistics change.
+  function parseShape(shape) {
+    const mark = shape.indexOf("?");
+    const path = (mark < 0 ? shape : shape.slice(0, mark)).split("/").slice(1);
+    const rawQuery = mark < 0 ? "" : shape.slice(mark + 1);
+    const query = rawQuery
+      ? rawQuery
+          .split("&")
+          .map((pair) => {
+            const eq = pair.indexOf("=");
+            return eq < 0 ? [pair, ""] : [pair.slice(0, eq), pair.slice(eq + 1)];
+          })
+          .sort(compareNames)
+      : [];
+    return { path, query };
+  }
+
+  function tokenMatches(pattern, value) {
+    if (pattern === "{num}") return /^\d+$/.test(value);
+    if (isPlaceholder(pattern)) return value.length > 0;
+    return pattern === value;
+  }
+
+  function matchesShape(pattern, link) {
+    if (pattern.path.length !== link.segments.length || pattern.query.length !== link.query.length) return false;
+    for (let i = 0; i < pattern.path.length; i += 1) {
+      if (!tokenMatches(pattern.path[i], link.segments[i])) return false;
+    }
+    for (let i = 0; i < pattern.query.length; i += 1) {
+      const [name, token] = pattern.query[i];
+      const [linkName, value] = link.query[i];
+      if (name !== linkName || !tokenMatches(token, encodeURIComponent(value))) return false;
+    }
+    return true;
+  }
+
+  function isNavigation(element) {
+    if (element.closest(NAV_SELECTOR)) return true;
+    // A header or footer inside an article belongs to that article (its title, its tags).
+    const edge = element.closest("header, footer");
+    return Boolean(edge && !edge.closest("article"));
+  }
+
+  // Same-site, visible links outside navigation, with their path segments and sorted query.
+  function candidateLinks() {
+    const links = [];
+    for (const anchor of document.querySelectorAll("a[href]")) {
+      let url;
+      try {
+        url = new URL(anchor.href, location.href);
+      } catch {
+        continue;
+      }
+      if (!/^https?:$/.test(url.protocol) || !isSameSite(url)) continue;
+      url.hash = "";
+      if (url.href.length > 2048) continue;
+      if (anchor.getClientRects().length === 0 || isNavigation(anchor)) continue;
+      links.push({
+        anchor,
+        url: url.href,
+        segments: url.pathname.split("/").slice(1),
+        query: [...url.searchParams].map(([name, value]) => [encodeURIComponent(name), value]).sort(compareNames),
+      });
+    }
+    return links;
+  }
+
+  function assignShapes(links) {
+    const wordValues = new Map();
+    for (const link of links) {
+      for (const [name, value] of link.query) {
+        if (!wordValues.has(name)) wordValues.set(name, new Set());
+        if (isWordLike(value)) wordValues.get(name).add(value);
+      }
+    }
+    const buckets = new Map();
+    for (const link of links) {
+      link.path = link.segments.map(segmentShape);
+      link.queryTokens = link.query.map(([name, value]) => [name, queryToken(name, value, wordValues)]);
+      const key = `${link.path.length}?${link.query.map(([name]) => name).join("&")}`;
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(link);
+    }
+    for (const bucket of buckets.values()) {
+      const variants = [];
+      for (let p = 0; p < bucket[0].path.length; p += 1) {
+        const words = new Set();
+        for (const link of bucket) if (!isPlaceholder(link.path[p])) words.add(link.path[p]);
+        if (words.size >= MIN_VARIANTS) variants.push({ p, count: words.size });
+      }
+      // The most varied position first: that is the one naming the item (a user, a slug).
+      variants.sort((a, b) => b.count - a.count || a.p - b.p);
+      for (const link of bucket) {
+        for (const { p } of variants) {
+          // An id-like word at a variable position (a user name with digits) joins the rest.
+          if (link.path[p] === "{num}" || link.path[p] === "{any}") continue;
+          const next = link.path.slice();
+          next[p] = "{any}";
+          // A shape of placeholders only would join unrelated links.
+          if (next.some((token) => token !== "" && !isPlaceholder(token))) link.path = next;
+        }
+      }
+    }
+    for (const link of links) link.shape = shapeString(link.path, link.queryTokens);
+  }
+
+  // Each item's card: the outermost ancestor that still holds no other URL of the group
+  // (a post, a grid tile). Works the same on any site; no site knowledge needed.
+  function cardsFor(links) {
+    const holds = new Map();
+    for (const { anchor, url } of links) {
+      for (let el = anchor.parentElement; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+        const seen = holds.get(el);
+        // Every ancestor of an element holding two URLs holds two as well.
+        if (seen === null) break;
+        holds.set(el, seen === undefined || seen === url ? url : null);
+      }
+    }
+    return links.map(({ anchor, url }) => {
+      let card = anchor;
+      for (let el = anchor.parentElement; el && holds.get(el) === url; el = el.parentElement) card = el;
+      return card;
+    });
+  }
+
+  function area(element) {
+    const rect = element.getBoundingClientRect();
+    return rect.width * rect.height;
+  }
+
+  function isMediaSized(element) {
+    const rect = element.getBoundingClientRect();
+    return Math.min(rect.width, rect.height) >= MIN_MEDIA_SIDE && rect.width * rect.height >= MIN_MEDIA_AREA;
+  }
+
+  function httpUrl(value) {
+    if (!value) return null;
+    try {
+      const url = new URL(value, location.href);
+      return /^https?:$/.test(url.protocol) ? url.href : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function hasMedia(card) {
+    // A page image is its own card.
+    if (card.tagName === "IMG") return isMediaBox(imageBox(card));
+    if (card.querySelector("video")) return true;
+    for (const img of card.querySelectorAll("img")) if (isMediaSized(img)) return true;
+    return false;
+  }
+
+  function largestImage(root) {
+    let best = null;
+    let bestArea = 0;
+    for (const img of root.querySelectorAll("img")) {
+      const src = httpUrl(img.currentSrc || img.src);
+      if (!src || !isMediaSized(img)) continue;
+      const size = area(img);
+      if (size > bestArea) {
+        best = src;
+        bestArea = size;
+      }
+    }
+    return best;
+  }
+
+  // The largest image big enough to be media (icons and avatars are skipped), looked for in the
+  // item's own links first, then in its card; else a video poster.
+  function cardThumbnail(anchors, card) {
+    for (const anchor of anchors) {
+      const own = largestImage(anchor);
+      if (own) return own;
+    }
+    const best = largestImage(card);
+    if (best) return best;
+    for (const video of card.querySelectorAll("video[poster]")) {
+      const poster = httpUrl(video.getAttribute("poster"));
+      if (poster) return poster;
+    }
+    return null;
+  }
+
+  function cardTitle(anchors, card) {
+    for (const anchor of anchors) {
+      const aria = anchor.getAttribute("aria-label")?.trim();
+      if (aria && aria.length >= 12) return aria;
+      const own = anchor.textContent?.replace(/\s+/g, " ").trim() || "";
+      if (own.length >= 12) return own;
+    }
+    return (card.innerText || card.textContent || "").replace(/\s+/g, " ").trim().slice(0, 160);
+  }
+
+  // An ad card carries its own short label ("広告", "Ad", "Promoted", ...) as a text of its own.
+  function isAd(card) {
+    const walker = document.createTreeWalker(card, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const text = node.nodeValue;
+      if (text.length <= 40 && AD_LABELS.has(text.replace(/\s+/g, " ").trim().toLowerCase())) return true;
+    }
+    return false;
+  }
+
+  // --- The page's own images -------------------------------------------------------------
+
+  function pageKey() {
+    const url = new URL(location.href);
+    url.hash = "";
+    return url.href;
+  }
+
+  // An absolute http(s) URL of an image the app can save; never data:, blob: or SVG.
+  function imageFileUrl(value) {
+    if (!value) return null;
+    try {
+      const url = new URL(value, location.href);
+      if (!/^https?:$/.test(url.protocol) || /\.svg$/i.test(url.pathname)) return null;
+      url.hash = "";
+      return url.href.length > 2048 ? null : url.href;
+    } catch {
+      return null;
+    }
+  }
+
+  // The candidate with the largest width descriptor; density-only candidates rank below any
+  // width, by density (a candidate without a descriptor is 1x).
+  function largestCandidate(srcsets) {
+    let best = null;
+    let bestScore = -1;
+    for (const srcset of srcsets) {
+      const text = srcset || "";
+      let i = 0;
+      while (i < text.length) {
+        while (i < text.length && /[\s,]/.test(text[i])) i += 1;
+        if (i >= text.length) break;
+        let end = i;
+        while (end < text.length && !/\s/.test(text[end])) end += 1;
+        let url = text.slice(i, end);
+        let descriptor = "";
+        if (/,$/.test(url)) {
+          url = url.replace(/,+$/, "");
+          i = end;
+        } else {
+          let stop = end;
+          while (stop < text.length && text[stop] !== ",") stop += 1;
+          descriptor = text.slice(end, stop).trim();
+          i = stop + 1;
+        }
+        const width = /(?:^|\s)(\d+)w(?:\s|$)/.exec(descriptor);
+        const density = /(?:^|\s)(\d+(?:\.\d+)?)x(?:\s|$)/.exec(descriptor);
+        const score = width ? 1000 + Number(width[1]) : density ? Number(density[1]) : 1;
+        if (url && score > bestScore) {
+          best = url;
+          bestScore = score;
+        }
+      }
+    }
+    return best;
+  }
+
+  // The largest srcset candidate of the img or its <picture> sources (the image is saved, so
+  // the best version beats the one sized for this window), else what the page shows
+  // (currentSrc), else src.
+  function pageImageUrl(img) {
+    const srcsets = [img.getAttribute("srcset")];
+    if (img.parentElement?.tagName === "PICTURE") {
+      for (const source of img.parentElement.querySelectorAll(":scope > source[srcset]")) {
+        srcsets.push(source.getAttribute("srcset"));
+      }
+    }
+    return (
+      imageFileUrl(largestCandidate(srcsets)) ||
+      imageFileUrl(img.currentSrc) ||
+      imageFileUrl(img.getAttribute("src"))
+    );
+  }
+
+  // The image's size: natural once loaded, else its box on the page, else its width/height
+  // attributes (a lazy image not laid out yet).
+  function imageBox(img) {
+    if (img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) return [img.naturalWidth, img.naturalHeight];
+    const rect = img.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) return [rect.width, rect.height];
+    const width = Number(img.getAttribute("width"));
+    const height = Number(img.getAttribute("height"));
+    return width > 0 && height > 0 ? [width, height] : [0, 0];
+  }
+
+  function isMediaBox([width, height]) {
+    return Math.min(width, height) >= MIN_MEDIA_SIDE && width * height >= MIN_MEDIA_AREA;
+  }
+
+  // Inside a link to another page (a thumbnail of an item, an ad, a profile): not a page image.
+  // A link to the image itself, to an image file or to this same page opens nothing else.
+  function leadsElsewhere(img, imageUrl) {
+    const anchor = img.closest("a[href]");
+    if (!anchor) return false;
+    let target;
+    try {
+      target = new URL(anchor.href, location.href);
+    } catch {
+      return false;
+    }
+    if (!/^https?:$/.test(target.protocol)) return false;
+    target.hash = "";
+    return target.href !== imageUrl && !IMAGE_FILE.test(target.pathname) && target.href !== pageKey();
+  }
+
+  // Media-sized images outside navigation, ads and links to other pages, one per URL, in page
+  // order. Each keeps the number it got when first found on this page.
+  function pageImages(includeAds) {
+    const key = pageKey();
+    if (memory.imagesPage !== key) {
+      memory.imagesPage = key;
+      memory.imageIndex = new Map();
+    }
+    const found = [];
+    const ads = [];
+    const seen = new Set();
+    for (const img of document.querySelectorAll("img")) {
+      if (found.length >= MAX_GROUP_URLS) break;
+      if (img.getClientRects().length === 0) continue;
+      const url = pageImageUrl(img);
+      if (!url || seen.has(url)) continue;
+      if (!isMediaBox(imageBox(img)) || isNavigation(img) || leadsElsewhere(img, url)) continue;
+      seen.add(url);
+      const card = img.closest("figure") || img;
+      if (!includeAds && isAd(card)) {
+        ads.push(url);
+        continue;
+      }
+      if (!memory.imageIndex.has(url)) memory.imageIndex.set(url, memory.imageIndex.size + 1);
+      found.push({ img, card, url, index: memory.imageIndex.get(url) });
+    }
+    return { found, ads };
+  }
+
+  function imageCard(url) {
+    const img = [...document.querySelectorAll("img")].find((candidate) => pageImageUrl(candidate) === url);
+    return img ? img.closest(`.${MARK_CLASS}`) || img.closest("figure") || img : null;
+  }
+
+  // --- Page facts, for naming saved page images ---------------------------------------------
+
+  function looksLikeUrl(text) {
+    return /^(?:[a-z][a-z0-9+.-]*:)?\/\//i.test(text);
+  }
+
+  function metaContent(selector) {
+    return document.querySelector(selector)?.getAttribute("content")?.trim() || null;
+  }
+
+  // Every JSON-LD object in page order, arrays and @graph unfolded; malformed blocks are skipped.
+  function jsonLdNodes() {
+    const nodes = [];
+    const visit = (value, depth) => {
+      if (depth > 6 || nodes.length >= 200 || !value || typeof value !== "object") return;
+      if (Array.isArray(value)) {
+        for (const entry of value) visit(entry, depth + 1);
+        return;
+      }
+      nodes.push(value);
+      if (value["@graph"]) visit(value["@graph"], depth + 1);
+    };
+    for (const script of document.querySelectorAll('script[type="application/ld+json" i]')) {
+      try {
+        visit(JSON.parse(script.textContent || ""), 0);
+      } catch {
+        // Not JSON: ignored, like a browser would.
+      }
+    }
+    return nodes;
+  }
+
+  // The first author's name; an author given only as {"@id"} is looked up among the nodes.
+  function authorName(author, byId) {
+    let first = Array.isArray(author) ? author[0] : author;
+    if (first && typeof first === "object" && first.name === undefined && typeof first["@id"] === "string") {
+      first = byId.get(first["@id"]);
+    }
+    const name = typeof first === "string" ? first : first && typeof first === "object" ? first.name : null;
+    if (typeof name !== "string") return null;
+    const trimmed = name.replace(/\s+/g, " ").trim();
+    return trimmed && !looksLikeUrl(trimmed) ? trimmed : null;
+  }
+
+  function unixSeconds(value) {
+    if (typeof value !== "string" || !value.trim()) return null;
+    const milliseconds = Date.parse(value.trim());
+    return Number.isFinite(milliseconds) ? Math.floor(milliseconds / 1000) : null;
+  }
+
+  function pageFacts() {
+    const nodes = jsonLdNodes();
+    const byId = new Map();
+    for (const node of nodes) if (typeof node["@id"] === "string" && !byId.has(node["@id"])) byId.set(node["@id"], node);
+    const title = metaContent('meta[property="og:title"]') || (document.title || "").replace(/\s+/g, " ").trim();
+    let uploader = null;
+    for (const node of nodes) {
+      uploader = authorName(node.author, byId);
+      if (uploader) break;
+    }
+    if (!uploader) uploader = metaContent('meta[name="author" i]');
+    if (!uploader) {
+      const articleAuthor = metaContent('meta[property="article:author"]');
+      uploader = articleAuthor && !looksLikeUrl(articleAuthor) ? articleAuthor : null;
+    }
+    let publishedAt = null;
+    for (const node of nodes) {
+      publishedAt = unixSeconds(node.datePublished);
+      if (publishedAt !== null) break;
+    }
+    if (publishedAt === null) publishedAt = unixSeconds(metaContent('meta[property="article:published_time"]'));
+    if (publishedAt === null) publishedAt = unixSeconds(document.querySelector("article time[datetime]")?.getAttribute("datetime"));
+    const segments = location.pathname.split("/").filter(Boolean);
+    let id = segments.length ? segments[segments.length - 1] : "";
+    try {
+      id = decodeURIComponent(id);
+    } catch {
+      // Keep the raw segment.
+    }
+    const dot = id.lastIndexOf(".");
+    if (dot > 0) id = id.slice(0, dot);
+    return { title, uploader, publishedAt, id: [...id].length >= 3 ? id : null };
+  }
+
+  function median(values) {
+    if (!values.length) return 0;
+    const sorted = values.slice().sort((a, b) => a - b);
+    return sorted[Math.floor(sorted.length / 2)];
+  }
+
+  // Groups whose cards mostly hold media come first; then many large cards beat many small
+  // links; a tie goes to the shorter path (a post's own link rather than one of its sub-pages).
+  function rankGroups(groups) {
+    for (const group of groups) {
+      // Page images bring their cards (each image is its own); link groups find theirs.
+      const cards = group.cards || [...new Set(cardsFor(group.links))];
+      group.media = cards.filter(hasMedia).length * 2 >= cards.length;
+      group.score = group.urls.size * Math.sqrt(median(cards.map(area)));
+    }
+    return groups.sort(
+      (a, b) =>
+        Number(b.media) - Number(a.media) ||
+        b.score - a.score ||
+        b.urls.size - a.urls.size ||
+        a.path.length - b.path.length ||
+        (a.shape < b.shape ? -1 : a.shape > b.shape ? 1 : 0),
+    );
+  }
+
+  function ensureStyle() {
+    if (document.getElementById(STYLE_ID)) return;
+    const style = document.createElement("style");
+    style.id = STYLE_ID;
+    style.textContent = `
+      .${MARK_CLASS} {
+        outline: 2.5px solid #1E9E56 !important;
+        outline-offset: 1px !important;
+      }
+      .${MARK_CLASS}.${REVEAL_CLASS} {
+        outline-width: 5px !important;
+        outline-offset: 3px !important;
+      }
+      .${BADGE_CLASS} {
+        position: absolute !important;
+        z-index: 2147483647 !important;
+        top: 4px !important;
+        left: 4px !important;
+        width: 20px !important;
+        height: 20px !important;
+        border-radius: 50% !important;
+        display: grid !important;
+        place-items: center !important;
+        background: #1E9E56 !important;
+        color: #FFFFFF !important;
+        font: 700 14px/1 sans-serif !important;
+        pointer-events: none !important;
+      }
+    `;
+    (document.head || document.documentElement).appendChild(style);
+  }
+
+  function unmark(element) {
+    element.classList.remove(MARK_CLASS);
+    for (const badge of element.querySelectorAll(`:scope > .${BADGE_CLASS}`)) badge.remove();
+    // Undo only what mark() changed: a static element made relative for the badge.
+    if (element.dataset.vdlStatic === "1") {
+      element.style.position = "";
+      delete element.dataset.vdlStatic;
+    }
+  }
+
+  function mark(element) {
+    element.classList.add(MARK_CLASS);
+    // An image cannot hold the badge; its outline is enough.
+    if (element.tagName === "IMG" || element.querySelector(`:scope > .${BADGE_CLASS}`)) return;
+    // The badge needs a positioned parent; never override a page's own positioning
+    // (virtualized lists place their rows absolutely).
+    if (getComputedStyle(element).position === "static") {
+      element.style.position = "relative";
+      element.dataset.vdlStatic = "1";
+    }
+    const badge = document.createElement("span");
+    badge.className = BADGE_CLASS;
+    badge.textContent = "✓";
+    badge.setAttribute("aria-hidden", "true");
+    element.appendChild(badge);
+  }
+
+  function scan(requestedShape, options) {
+    const includeAds = Boolean(options?.includeAds);
+    ensureStyle();
+    // Unmark before measuring and measure everything before marking, so the page lays out once.
+    for (const element of document.querySelectorAll(`.${MARK_CLASS}`)) unmark(element);
+
+    const links = candidateLinks();
+    assignShapes(links);
+    const byShape = new Map();
+    for (const link of links) {
+      let group = byShape.get(link.shape);
+      if (!group) {
+        group = { shape: link.shape, path: link.path, urls: new Set(), links: [] };
+        byShape.set(link.shape, group);
+      }
+      if (group.urls.size < MAX_GROUP_URLS || group.urls.has(link.url)) {
+        group.urls.add(link.url);
+        group.links.push(link);
+      }
+    }
+    const candidates = [...byShape.values()].filter((group) => group.urls.size >= MIN_GROUP_URLS);
+    // The page's own images form one group from a single image up, ranked like the others.
+    const images = pageImages(includeAds);
+    const imageGroup = images.found.length
+      ? {
+          shape: IMAGES_SHAPE,
+          path: [],
+          urls: new Set(images.found.map((image) => image.url)),
+          links: [],
+          cards: images.found.map((image) => image.img),
+        }
+      : null;
+    if (imageGroup) candidates.push(imageGroup);
+    const ranked = rankGroups(candidates);
+    const groups = ranked.map((group) => ({ shape: group.shape, count: group.urls.size }));
+
+    let chosen = null;
+    let selected = [];
+    let imagesChosen = false;
+    if (requestedShape === IMAGES_SHAPE) {
+      chosen = IMAGES_SHAPE;
+      imagesChosen = true;
+      if (!imageGroup) groups.unshift({ shape: IMAGES_SHAPE, count: 0 });
+    } else if (requestedShape) {
+      const pattern = parseShape(requestedShape);
+      chosen = requestedShape;
+      selected = links.filter((link) => matchesShape(pattern, link));
+      if (!groups.some((group) => group.shape === requestedShape)) {
+        groups.unshift({ shape: requestedShape, count: new Set(selected.map((link) => link.url)).size });
+      }
+    } else if (ranked.length) {
+      chosen = ranked[0].shape;
+      imagesChosen = ranked[0] === imageGroup;
+      selected = ranked[0].links;
+    }
+
+    if (imagesChosen) {
+      const items = [];
+      const toMark = new Set();
+      for (const { img, card, url, index } of images.found) {
+        const title = (img.getAttribute("alt") || "").replace(/\s+/g, " ").trim();
+        items.push({ url, title, thumbnail: url, index });
+        toMark.add(card);
+        memory.cards.set(url, card);
+      }
+      for (const card of toMark) mark(card);
+      // The best link group goes along, folded under the images (「ほかのリンク」).
+      const bestLinks = ranked.find((group) => group !== imageGroup);
+      const otherLinks = bestLinks
+        ? { shape: bestLinks.shape, urls: [...bestLinks.urls].slice(0, MAX_OTHER_LINKS) }
+        : null;
+      return { groups, shape: chosen, items, ads: images.ads, page: pageFacts(), otherLinks };
+    }
+
+    const cards = cardsFor(selected);
+    const byUrl = new Map();
+    selected.forEach((link, index) => {
+      if (!byUrl.has(link.url)) byUrl.set(link.url, { anchors: [], cards: [] });
+      const entry = byUrl.get(link.url);
+      entry.anchors.push(link.anchor);
+      if (!entry.cards.includes(cards[index])) entry.cards.push(cards[index]);
+    });
+    const items = [];
+    const ads = [];
+    const toMark = [];
+    for (const [url, entry] of byUrl) {
+      if (items.length >= MAX_GROUP_URLS) break;
+      if (!includeAds && entry.cards.some(isAd)) {
+        ads.push(url);
+        continue;
+      }
+      items.push({ url, title: cardTitle(entry.anchors, entry.cards[0]), thumbnail: cardThumbnail(entry.anchors, entry.cards[0]) });
+      toMark.push(...entry.cards);
+      memory.cards.set(url, entry.cards[0]);
+    }
+    for (const card of toMark) mark(card);
+    return { groups, shape: chosen, items, ads, page: pageFacts(), otherLinks: null };
+  }
+
+  function step() {
+    window.scrollBy({ top: Math.max(1, window.innerHeight * 0.9), left: 0, behavior: "auto" });
+    const root = document.scrollingElement || document.documentElement;
+    return { atBottom: root.scrollTop + window.innerHeight >= root.scrollHeight - 1 };
+  }
+
+  // Scroll an item's card into view and flash its outline. A card the page has dropped since
+  // (virtualized lists remove what scrolled away) is looked up again by its link.
+  function reveal(url) {
+    let card = memory.cards.get(url);
+    if (!card || !card.isConnected) {
+      const anchor = [...document.querySelectorAll("a[href]")].find((a) => {
+        try {
+          const href = new URL(a.href, location.href);
+          href.hash = "";
+          return href.href === url;
+        } catch {
+          return false;
+        }
+      });
+      card = anchor?.closest(`.${MARK_CLASS}`) || anchor || imageCard(url);
+    }
+    if (!card) return { found: false };
+    const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    card.scrollIntoView({ block: "center", inline: "nearest", behavior: smooth ? "smooth" : "auto" });
+    if (card.classList.contains(MARK_CLASS)) {
+      card.classList.add(REVEAL_CLASS);
+      setTimeout(() => card.classList.remove(REVEAL_CLASS), 1600);
+    }
+    return { found: true };
+  }
+
+  function clear() {
+    for (const element of document.querySelectorAll(`.${MARK_CLASS}`)) unmark(element);
+    for (const element of document.querySelectorAll(`.${REVEAL_CLASS}`)) element.classList.remove(REVEAL_CLASS);
+    memory.cards.clear();
+    memory.imagesPage = null;
+    memory.imageIndex = new Map();
+    document.getElementById(STYLE_ID)?.remove();
+  }
+
+  window.__vdlCollector = { scan, step, reveal, clear, pageFacts };
+})();
