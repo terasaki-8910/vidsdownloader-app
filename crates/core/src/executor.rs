@@ -626,13 +626,55 @@ impl YtDlpExecutor {
             }
         })
         .await?;
-        if exit.code != Some(0) {
-            return Err(first_error.unwrap_or_else(|| JobFailure {
+        let yt_dlp_failure = (exit.code != Some(0)).then(|| {
+            first_error.unwrap_or_else(|| JobFailure {
                 category: ErrorCategory::Unknown,
                 message: last_stderr.unwrap_or_else(|| "yt-dlp comments fetch failed".to_owned()),
-            }));
+            })
+        });
+        let staged = match &yt_dlp_failure {
+            None => comment_files::stage_raw_file(scratch, source, render.0, render.1),
+            Some(failure) => Err(failure.message.clone()),
+        };
+        // yt-dlp already asks niconico without logging in, but when its extractor cannot do
+        // it at all, ask the site the same way its own watch page does.
+        match staged {
+            Ok(fetched) => Ok(fetched),
+            Err(first) if source == CommentsSource::Niconico => {
+                match self.fetch_niconico_guest_comments(url, scratch).await {
+                    Ok(()) => comment_files::stage_raw_file(scratch, source, render.0, render.1)
+                        .map_err(|second| {
+                            failure(format!(
+                                "{first} / ログインせずの取得も失敗しました: {second}"
+                            ))
+                        }),
+                    Err(second) => {
+                        let mut reported = yt_dlp_failure.unwrap_or_else(|| failure(first));
+                        reported.message = format!(
+                            "{} / ログインせずの取得も失敗しました: {second}",
+                            reported.message
+                        );
+                        Err(reported)
+                    }
+                }
+            }
+            Err(first) => Err(yt_dlp_failure.unwrap_or_else(|| failure(first))),
         }
-        comment_files::stage_raw_file(scratch, source, render.0, render.1).map_err(failure)
+    }
+
+    /// Writes the raw comments file yt-dlp would have written, fetched without a login.
+    async fn fetch_niconico_guest_comments(&self, url: &str, scratch: &Path) -> Result<(), String> {
+        let address = url.to_owned();
+        let json = tokio::task::spawn_blocking(move || {
+            crate::niconico_guest::fetch_comments_json(&address)
+        })
+        .await
+        .map_err(|error| error.to_string())??;
+        let suffix = comment_files::raw_suffix(CommentsSource::Niconico)
+            .ok_or_else(|| "comments source is not supported".to_owned())?;
+        let path = scratch.join(format!("fetch{suffix}"));
+        fs::write(&path, json)
+            .map_err(|error| format!("could not write {}: {error}", path.display()))
     }
 
     /// Runs yt-dlp once for a list URL (`-J --flat-playlist`, no format selection) with

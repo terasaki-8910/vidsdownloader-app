@@ -11,6 +11,7 @@ coverage/
 .env.*
 !.env.example
 target/
+target-*/
 /vendor/
 /.cargo/
 /.cargo-home/
