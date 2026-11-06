@@ -5094,7 +5094,7 @@ dependencies = [
 
 [[package]]
 name = "vidsdownloader"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "block2",
  "objc2",

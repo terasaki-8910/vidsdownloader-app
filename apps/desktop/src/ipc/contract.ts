@@ -468,6 +468,8 @@ export interface Commands {
   save_again: { args: { id: number }; result: null };
   /** Reads the clipboard once; returns an http(s) URL found there, or null. */
   read_clipboard_url: { args: Record<string, never>; result: string | null };
+  /** Replaces the clipboard contents with user-selected text. */
+  copy_text: { args: { text: string }; result: null };
   library_search: {
     args: { text: string | null; limit: number; offset: number };
     result: LibraryRow[];

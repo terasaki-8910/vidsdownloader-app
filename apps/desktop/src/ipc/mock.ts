@@ -132,7 +132,8 @@ let settings: Settings = {
 // ---------------------------------------------------------------------------
 
 const jobs = new Map<number, JobRow>();
-let nextJobId = 15;
+let nextJobId = 17;
+export let lastCopiedText: string | null = null;
 /** tzOffsetSeconds passed with enqueue_urls, by job id; used to date the output
  *  path in local time like the real Rust side does. Seed rows do not go through
  *  enqueue_urls, so they fall back to UTC. */
@@ -457,6 +458,26 @@ seedJob({
   etaS: null,
   error: { category: "PageGate", message: "stopped at a confirmation page" },
   details: details({ title: "Featured video", site: "video.example.com" }),
+  outputPath: null,
+  skipped: null,
+});
+
+seedJob({
+  id: 16,
+  url: "https://video.example.com/watch/live-archive-0412",
+  state: "Failed",
+  attempt: 1,
+  progress: null,
+  speedBytesPerS: null,
+  etaS: null,
+  error: {
+    category: "Unknown",
+    message:
+      "fragment 3 not found, unable to continue\n" +
+      "WARNING: [download] Got error: HTTP Error 403: Forbidden. Retrying fragment 3 (1/10)...\n" +
+      "WARNING: [download] Got error: HTTP Error 403: Forbidden. Retrying fragment 3 (10/10)...",
+  },
+  details: details({ title: "配信アーカイブ 4月12日", site: "video.example.com" }),
   outputPath: null,
   skipped: null,
 });
@@ -1746,6 +1767,10 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
     case "read_clipboard_url":
       // Sample only: a fixed URL so the clipboard banner is reachable in dev/screenshots.
       return "https://www.youtube.com/watch?v=BaW_jenozKc";
+
+    case "copy_text":
+      lastCopiedText = (args as Commands["copy_text"]["args"]).text;
+      return null;
 
     case "library_search": {
       const { text, limit, offset } = args as Commands["library_search"]["args"];

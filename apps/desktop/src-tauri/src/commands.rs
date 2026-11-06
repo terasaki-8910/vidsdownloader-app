@@ -516,6 +516,14 @@ pub async fn read_clipboard_url(app: AppHandle) -> Result<Option<String>, String
 }
 
 #[tauri::command]
+pub async fn copy_text(text: String, app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || app.clipboard().write_text(text))
+        .await
+        .map_err(|error| format!("clipboard task failed: {error}"))?
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub async fn library_search(
     text: Option<String>,
     limit: i64,

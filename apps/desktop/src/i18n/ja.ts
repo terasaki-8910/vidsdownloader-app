@@ -170,6 +170,9 @@ export const ja: Translations = {
   detail: {
     quality: "画質",
     savedTo: "保存先",
+    errorText: "エラーの内容",
+    copyText: "文をコピー",
+    copied: "コピーしました",
   },
 
   player: {

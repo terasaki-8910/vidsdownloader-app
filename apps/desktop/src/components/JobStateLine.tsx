@@ -5,6 +5,8 @@ import { formatClockDuration, formatSpeed } from "../lib/format";
 import { hasSavedFile, savedNote, skipReasonText } from "../lib/jobNote";
 import styles from "./JobStateLine.module.css";
 
+export const COMMENTS_ONLY_UNSUPPORTED = "Only niconico and Bilibili have comments to extract";
+
 /**
  * The row's (and the detail panel's) state line: progress while active, a
  * moving segment while probing/post-processing, plain status text while
@@ -96,7 +98,7 @@ export function JobStateLine({ job, showPath = true }: { job: JobRow; showPath?:
       return (
         <div className={`${styles.state} ${styles.err}`}>
           <AlertTriangle size={14} aria-hidden />
-          <span>{job.error?.message === "Only niconico and Bilibili have comments to extract" ? t.queue.commentsOnlyUnsupported : job.error ? t.errors[job.error.category] : t.errors.Unknown}</span>
+          <span>{job.error?.message === COMMENTS_ONLY_UNSUPPORTED ? t.queue.commentsOnlyUnsupported : job.error ? t.errors[job.error.category] : t.errors.Unknown}</span>
         </div>
       );
 

@@ -1,12 +1,16 @@
 import { Play } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ipc } from "../ipc";
 import type { JobRow, Preset } from "../ipc/contract";
 import { useT } from "../i18n/I18nContext";
 import { joinMeta, formatDateTime } from "../lib/format";
 import { getRowAction, type RowActionHandlers } from "../lib/rowAction";
 import { isPlayablePath } from "../lib/media";
+import { errorMessage } from "../lib/url";
 import { useNavigation } from "../state/NavigationContext";
-import { JobStateLine } from "./JobStateLine";
+import { COMMENTS_ONLY_UNSUPPORTED, JobStateLine } from "./JobStateLine";
 import { MiniPlayer } from "./MiniPlayer";
+import secondaryStyles from "./SitesSection.module.css";
 import styles from "./DetailBody.module.css";
 
 interface DetailBodyProps extends RowActionHandlers {
@@ -18,6 +22,9 @@ interface DetailBodyProps extends RowActionHandlers {
 export function DetailBody({ job, preset, onCancel, onRetry, onReveal, onLogin, onSaveAgain, onChooseMedia }: DetailBodyProps) {
   const t = useT();
   const { openInBrowser } = useNavigation();
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
+  const [copyError, setCopyError] = useState<string | null>(null);
   const title = job.details?.title ?? job.url;
   const sub = joinMeta([
     job.details?.uploader,
@@ -33,6 +40,36 @@ export function DetailBody({ job, preset, onCancel, onRetry, onReveal, onLogin, 
     onChooseMedia,
     onOpenInBrowser: () => void openInBrowser(job.url),
   });
+  const failureText =
+    job.state === "Failed" && job.error?.message && job.error.message !== COMMENTS_ONLY_UNSUPPORTED
+      ? job.error.message
+      : null;
+
+  useEffect(() => {
+    setCopyState("idle");
+    setCopyError(null);
+    if (copiedTimer.current !== null) clearTimeout(copiedTimer.current);
+    return () => {
+      if (copiedTimer.current !== null) clearTimeout(copiedTimer.current);
+    };
+  }, [job.id, failureText]);
+
+  async function copyFailureText() {
+    if (!failureText) return;
+    setCopyError(null);
+    try {
+      await ipc.call("copy_text", { text: failureText });
+      setCopyState("copied");
+      if (copiedTimer.current !== null) clearTimeout(copiedTimer.current);
+      copiedTimer.current = setTimeout(() => {
+        setCopyState("idle");
+        copiedTimer.current = null;
+      }, 2_000);
+    } catch (error) {
+      setCopyState("idle");
+      setCopyError(errorMessage(error));
+    }
+  }
 
   return (
     <div className={styles.body}>
@@ -59,7 +96,7 @@ export function DetailBody({ job, preset, onCancel, onRetry, onReveal, onLogin, 
 
       <JobStateLine job={job} showPath={job.state !== "Done"} />
 
-      {(preset || job.outputPath) && (
+      {(preset || job.outputPath || failureText) && (
         <dl className={styles.kv}>
           {preset && (
             <>
@@ -71,6 +108,28 @@ export function DetailBody({ job, preset, onCancel, onRetry, onReveal, onLogin, 
             <>
               <dt>{t.detail.savedTo}</dt>
               <dd className={styles.path}>{job.outputPath}</dd>
+            </>
+          )}
+          {failureText && (
+            <>
+              <dt>{t.detail.errorText}</dt>
+              <dd className={styles.errorDetail}>
+                <div className={styles.errorText} tabIndex={0} aria-label={t.detail.errorText}>
+                  {failureText}
+                </div>
+                <button
+                  type="button"
+                  className={secondaryStyles.secondary}
+                  onClick={() => void copyFailureText()}
+                >
+                  <span aria-live="polite">{copyState === "copied" ? t.detail.copied : t.detail.copyText}</span>
+                </button>
+                {copyError && (
+                  <span role="alert" className={secondaryStyles.addError}>
+                    {copyError}
+                  </span>
+                )}
+              </dd>
             </>
           )}
         </dl>

@@ -173,6 +173,9 @@ export const en: Translations = {
   detail: {
     quality: "Quality",
     savedTo: "Saved to",
+    errorText: "Error text",
+    copyText: "Copy text",
+    copied: "Copied",
   },
 
   player: {

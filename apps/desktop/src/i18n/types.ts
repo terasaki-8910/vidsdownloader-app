@@ -158,6 +158,9 @@ export interface Translations {
   detail: {
     quality: string;
     savedTo: string;
+    errorText: string;
+    copyText: string;
+    copied: string;
   };
 
   player: {

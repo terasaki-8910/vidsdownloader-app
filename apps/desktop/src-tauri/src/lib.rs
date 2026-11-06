@@ -38,10 +38,11 @@ use crate::collector::{
     collect_start, collect_stop,
 };
 use crate::commands::{
-    cancel_job, enqueue_page_images, enqueue_page_media, enqueue_urls, forward_queue_events,
-    get_settings, install_tools, job_file_exists, jobs_remove, library_search, open_job_file,
-    page_media_choose, pick_download_dir, pick_folder, queue_snapshot, read_clipboard_url,
-    retry_job, reveal_path, save_again, set_settings, tools_status,
+    cancel_job, copy_text, enqueue_page_images, enqueue_page_media, enqueue_urls,
+    forward_queue_events, get_settings, install_tools, job_file_exists, jobs_remove,
+    library_search, open_job_file, page_media_choose, pick_download_dir, pick_folder,
+    queue_snapshot, read_clipboard_url, retry_job, reveal_path, save_again, set_settings,
+    tools_status,
 };
 use crate::comments_commands::{
     comments_extract, comments_resolve, file_extract_comments, pick_video_file,
@@ -180,6 +181,7 @@ pub fn run() {
             save_again,
             jobs_remove,
             read_clipboard_url,
+            copy_text,
             library_search,
             library_open,
             library_open_with,

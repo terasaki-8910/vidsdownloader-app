@@ -1,6 +1,7 @@
 //! Job execution, from probing through library registration: one video with yt-dlp, an
 //! image post with gallery-dl, or a page's own images saved directly over HTTP.
 
+use std::collections::VecDeque;
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -613,25 +614,12 @@ impl YtDlpExecutor {
         let process = runner::spawn(self.run_spec(arguments, scratch))
             .await
             .map_err(|error| failure(error.to_string()))?;
-        let mut first_error = None;
-        let mut last_stderr = None;
+        let mut failure_details = YtDlpFailureDetails::default();
         let exit = consume_process(process, cancel, |line| {
-            if line.stream == crate::types::OutputStream::Stderr {
-                last_stderr = Some(line.text.clone());
-                if first_error.is_none()
-                    && let ParsedLine::Error { category, message } = crate::parse::parse_line(&line)
-                {
-                    first_error = Some(JobFailure { category, message });
-                }
-            }
+            failure_details.observe(&line);
         })
         .await?;
-        let yt_dlp_failure = (exit.code != Some(0)).then(|| {
-            first_error.unwrap_or_else(|| JobFailure {
-                category: ErrorCategory::Unknown,
-                message: last_stderr.unwrap_or_else(|| "yt-dlp comments fetch failed".to_owned()),
-            })
-        });
+        let yt_dlp_failure = (exit.code != Some(0)).then(|| failure_details.finish(exit.code));
         let staged = match &yt_dlp_failure {
             None => comment_files::stage_raw_file(scratch, source, render.0, render.1),
             Some(failure) => Err(failure.message.clone()),
@@ -795,39 +783,34 @@ impl YtDlpExecutor {
             .map_err(|error| failure(error.to_string()))?;
         let mut aggregator = ProgressAggregator::new(expected);
         let mut downloading = false;
-        let mut first_error = None;
+        let mut failure_details = YtDlpFailureDetails::default();
         let mut final_path = None;
-        let exit = consume_process(process, &job.cancel, |line| match crate::parse::parse_line(
-            &line,
-        ) {
-            ParsedLine::Download(progress) => {
-                if !downloading {
-                    let _ = job.sink.set_state(JobState::Downloading);
-                    downloading = true;
+        let exit = consume_process(process, &job.cancel, |line| {
+            failure_details.observe(&line);
+            match crate::parse::parse_line(&line) {
+                ParsedLine::Download(progress) => {
+                    if !downloading {
+                        let _ = job.sink.set_state(JobState::Downloading);
+                        downloading = true;
+                    }
+                    let progress = aggregator.update(&progress);
+                    job.sink.set_progress(progress.fraction);
+                    job.sink
+                        .set_transfer(progress.speed_bytes_per_s, progress.eta_s);
                 }
-                let progress = aggregator.update(&progress);
-                job.sink.set_progress(progress.fraction);
-                job.sink
-                    .set_transfer(progress.speed_bytes_per_s, progress.eta_s);
+                ParsedLine::Postprocess(_) => {
+                    // Postprocessing starts once every stream is downloaded, whatever the
+                    // progress totals said.
+                    job.sink.set_progress(Some(1.0));
+                    let _ = job.sink.set_state(JobState::PostProcessing);
+                }
+                ParsedLine::FinalPath(path) => final_path = Some(path),
+                _ => {}
             }
-            ParsedLine::Postprocess(_) => {
-                // Postprocessing starts once every stream is downloaded, whatever the
-                // progress totals said.
-                job.sink.set_progress(Some(1.0));
-                let _ = job.sink.set_state(JobState::PostProcessing);
-            }
-            ParsedLine::FinalPath(path) => final_path = Some(path),
-            ParsedLine::Error { category, message } if first_error.is_none() => {
-                first_error = Some(JobFailure { category, message });
-            }
-            _ => {}
         })
         .await?;
         if exit.code != Some(0) {
-            return Err(first_error.unwrap_or_else(|| JobFailure {
-                category: ErrorCategory::Unknown,
-                message: "yt-dlp download failed".to_owned(),
-            }));
+            return Err(failure_details.finish(exit.code));
         }
         Ok(final_path)
     }
@@ -1684,6 +1667,81 @@ fn canceled() -> JobFailure {
     }
 }
 
+const FAILURE_DETAIL_LINES: usize = 5;
+const FAILURE_DETAIL_LINE_CHARS: usize = 300;
+const FAILURE_MESSAGE_CHARS: usize = 2_000;
+
+/// The useful tail of yt-dlp's stderr and its first classified error. Download and
+/// comments-only runs share this so their user-facing failure text cannot drift apart.
+#[derive(Default)]
+struct YtDlpFailureDetails {
+    lines: VecDeque<String>,
+    error: Option<JobFailure>,
+}
+
+impl YtDlpFailureDetails {
+    fn observe(&mut self, line: &OutputLine) {
+        if line.stream != crate::types::OutputStream::Stderr || self.error.is_some() {
+            return;
+        }
+        if let ParsedLine::Error { category, message } = crate::parse::parse_line(line) {
+            let message = if category == ErrorCategory::Unknown {
+                failure_message(message, self.lines.iter().map(String::as_str))
+            } else {
+                message
+            };
+            self.error = Some(JobFailure { category, message });
+            return;
+        }
+        if line.text.trim().is_empty()
+            || line.text.starts_with(crate::types::DOWNLOAD_MARKER)
+            || line.text.starts_with(crate::types::POSTPROCESS_MARKER)
+            || line.text.starts_with(crate::types::PATH_MARKER)
+        {
+            return;
+        }
+        if self.lines.len() == FAILURE_DETAIL_LINES {
+            self.lines.pop_front();
+        }
+        self.lines
+            .push_back(cut_chars(&line.text, FAILURE_DETAIL_LINE_CHARS, true));
+    }
+
+    fn finish(self, exit_code: Option<i32>) -> JobFailure {
+        self.error.unwrap_or_else(|| {
+            let summary = exit_code.map_or_else(
+                || "yt-dlp stopped without an exit code".to_owned(),
+                |code| format!("yt-dlp exited with code {code}"),
+            );
+            JobFailure {
+                category: ErrorCategory::Unknown,
+                message: failure_message(summary, self.lines.iter().map(String::as_str)),
+            }
+        })
+    }
+}
+
+fn failure_message<'a>(summary: String, lines: impl IntoIterator<Item = &'a str>) -> String {
+    let mut message = summary;
+    for line in lines {
+        message.push('\n');
+        message.push_str(line);
+    }
+    cut_chars(&message, FAILURE_MESSAGE_CHARS, false)
+}
+
+fn cut_chars(text: &str, limit: usize, ellipsis: bool) -> String {
+    if text.chars().count() <= limit {
+        return text.to_owned();
+    }
+    let kept = limit.saturating_sub(if ellipsis { 1 } else { 0 });
+    let mut cut = text.chars().take(kept).collect::<String>();
+    if ellipsis && limit > 0 {
+        cut.push('…');
+    }
+    cut
+}
+
 fn failure(message: impl Into<String>) -> JobFailure {
     JobFailure {
         category: ErrorCategory::Unknown,
@@ -1981,11 +2039,43 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        LIST_PROBE_TIMEOUT, ListProbe, SourceItem, list_items, list_probe, list_probe_timed_out,
+        FAILURE_DETAIL_LINE_CHARS, FAILURE_MESSAGE_CHARS, LIST_PROBE_TIMEOUT, ListProbe,
+        SourceItem, YtDlpFailureDetails, list_items, list_probe, list_probe_timed_out,
     };
-    use crate::types::ErrorCategory;
+    use crate::types::{ErrorCategory, OutputLine, OutputStream};
 
     const CHANNEL: &str = "https://www.youtube.com/@BlenderOfficial/videos";
+
+    #[test]
+    fn yt_dlp_failure_detail_lines_are_cut_to_300_characters() {
+        let mut details = YtDlpFailureDetails::default();
+        details.observe(&OutputLine {
+            stream: OutputStream::Stderr,
+            text: "x".repeat(FAILURE_DETAIL_LINE_CHARS + 20),
+        });
+        let failure = details.finish(Some(1));
+        let line = failure.message.lines().nth(1).unwrap();
+        assert_eq!(line.chars().count(), FAILURE_DETAIL_LINE_CHARS);
+        assert!(line.ends_with('…'));
+    }
+
+    #[test]
+    fn yt_dlp_failure_messages_are_cut_to_2000_characters() {
+        let mut details = YtDlpFailureDetails::default();
+        for character in ['a', 'b', 'c', 'd', 'e'] {
+            details.observe(&OutputLine {
+                stream: OutputStream::Stderr,
+                text: character.to_string().repeat(FAILURE_DETAIL_LINE_CHARS),
+            });
+        }
+        details.observe(&OutputLine {
+            stream: OutputStream::Stderr,
+            text: format!("ERROR: {}", "z".repeat(1_000)),
+        });
+        let failure = details.finish(Some(1));
+        assert_eq!(failure.category, ErrorCategory::Unknown);
+        assert_eq!(failure.message.chars().count(), FAILURE_MESSAGE_CHARS);
+    }
 
     /// The shape of `yt-dlp -J --flat-playlist` for a YouTube channel's videos tab.
     fn youtube_channel() -> serde_json::Value {

@@ -196,7 +196,14 @@ fn fake_probe(mode: &str, args: &[OsString]) -> ! {
             io::stdout().flush().unwrap();
             std::process::exit(0);
         }
-        "ok" | "slow" | "ok-niconico" | "ok-comments-only" | "page-media" => {
+        "ok"
+        | "slow"
+        | "ok-niconico"
+        | "ok-comments-only"
+        | "page-media"
+        | "download-warning"
+        | "download-unknown-error"
+        | "download-classified-error" => {
             let niconico = matches!(mode, "ok-niconico" | "ok-comments-only");
             let page_media = mode == "page-media";
             let value = json!({
@@ -278,6 +285,29 @@ fn fake_download(mode: &str, args: &[OsString]) -> ! {
         std::process::exit(0);
     }
 
+    const RETRY_WARNING: &str =
+        "WARNING: [download] Got error: HTTP Error 403: Forbidden. Retrying fragment 3 (1/10)...";
+    match mode {
+        "download-warning" => {
+            eprintln!("{RETRY_WARNING}");
+            io::stderr().flush().unwrap();
+            std::process::exit(1);
+        }
+        "download-unknown-error" => {
+            eprintln!("{RETRY_WARNING}");
+            eprintln!("ERROR: fragment 3 not found, unable to continue");
+            io::stderr().flush().unwrap();
+            std::process::exit(1);
+        }
+        "download-classified-error" => {
+            eprintln!(
+                "ERROR: Unable to download webpage: <urlopen error [Errno 11001] getaddrinfo failed>"
+            );
+            io::stderr().flush().unwrap();
+            std::process::exit(1);
+        }
+        _ => {}
+    }
     assert!(matches!(
         mode,
         "ok" | "ok-niconico" | "playlist-item" | "page-media"
@@ -796,6 +826,54 @@ async fn login_failure_is_classified() {
     assert_eq!(error.category, ErrorCategory::LoginRequired);
     assert!(error.message.contains("members only"));
     assert!(!harness.attempt_path(id).exists());
+}
+
+#[tokio::test]
+async fn download_failure_without_error_keeps_the_warning_tail() {
+    let error = failed_download("download-warning").await;
+    assert_eq!(error.category, ErrorCategory::Unknown);
+    assert!(error.message.starts_with("yt-dlp exited with code 1"));
+    assert!(error.message.contains(
+        "WARNING: [download] Got error: HTTP Error 403: Forbidden. Retrying fragment 3 (1/10)..."
+    ));
+}
+
+#[tokio::test]
+async fn unknown_download_error_keeps_the_preceding_warning() {
+    let error = failed_download("download-unknown-error").await;
+    assert_eq!(error.category, ErrorCategory::Unknown);
+    assert!(
+        error
+            .message
+            .starts_with("fragment 3 not found, unable to continue")
+    );
+    assert!(
+        error
+            .message
+            .lines()
+            .skip(1)
+            .any(|line| line.starts_with("WARNING:"))
+    );
+}
+
+#[tokio::test]
+async fn classified_download_error_keeps_its_category_and_message() {
+    let error = failed_download("download-classified-error").await;
+    assert_eq!(error.category, ErrorCategory::Network);
+    assert_eq!(
+        error.message,
+        "Unable to download webpage: <urlopen error [Errno 11001] getaddrinfo failed>"
+    );
+}
+
+async fn failed_download(mode: &str) -> JobFailure {
+    let harness = Harness::new();
+    let queue = harness.queue(mode);
+    let events = queue.subscribe();
+    let id = queue.enqueue("https://example.test/video", harness.options(false, None));
+    let done = finished(events, id).await;
+    assert_eq!(done.state, JobState::Failed);
+    done.outcome.unwrap().unwrap_err()
 }
 
 #[tokio::test]
