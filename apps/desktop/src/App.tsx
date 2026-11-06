@@ -6,6 +6,7 @@ import { DetailPanel } from "./components/DetailPanel";
 import { DetailSheet } from "./components/DetailSheet";
 import { DownloadsView } from "./components/DownloadsView";
 import { LibraryView } from "./components/LibraryView";
+import { MethodsView } from "./components/MethodsView";
 import { PageMediaChoiceDialog } from "./components/PageMediaChoiceDialog";
 import { Sidebar, type View } from "./components/Sidebar";
 import { SettingsView, type SettingsSection } from "./components/SettingsView";
@@ -73,6 +74,8 @@ function AppShell() {
   const [manualClosed, setManualClosed] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("general");
   const [mediaChoiceJob, setMediaChoiceJob] = useState<JobRow | null>(null);
+  const [flowRequest, setFlowRequest] = useState<{ id: number; seq: number } | null>(null);
+  const flowRequestSeq = useRef(0);
 
   const urlFieldRef = useRef<HTMLTextAreaElement>(null);
   const appliedSettingsHash = useRef(false);
@@ -191,13 +194,25 @@ function AppShell() {
   }
 
   /** Shows the browser at a URL (from the add-site report); with `collect`, 集める starts once it has loaded. */
-  async function handleOpenInBrowser(url: string, options?: { collect?: boolean }) {
+  async function handleOpenInBrowser(
+    url: string,
+    options?: { collect?: boolean; collectShape?: string; flowId?: number },
+  ) {
     setSheetOpen(false);
+    if (options?.flowId == null) {
+      setFlowRequest(null);
+    } else {
+      flowRequestSeq.current += 1;
+      setFlowRequest({ id: options.flowId, seq: flowRequestSeq.current });
+    }
     setView("browser");
     // Let the browser destination mount and report its bounds first.
     await nextFrame();
     if (options?.collect) requestCollect(url);
     await openUrl(url);
+    if (options?.collectShape) {
+      await ipc.call("collect_start", { shape: options.collectShape, maxScrolls: 10 });
+    }
   }
 
   /** A queue row stopped for a login: log in, then the row is retried by itself. */
@@ -229,7 +244,7 @@ function AppShell() {
   }
 
   return (
-    <NavigationContext.Provider value={{ openInBrowser: handleOpenInBrowser }}>
+    <NavigationContext.Provider value={{ openInBrowser: handleOpenInBrowser, flowRequest }}>
       <div className={styles.shell}>
         <Sidebar
           view={view}
@@ -259,6 +274,8 @@ function AppShell() {
             <LibraryView />
           ) : view === "sources" ? (
             <SourcesView />
+          ) : view === "methods" ? (
+            <MethodsView />
           ) : view === "browser" ? (
             <BrowserView onOpenSites={() => openSettings("sites")} />
           ) : (

@@ -1,10 +1,10 @@
-import { Download, Folder, Globe, Moon, Plus, Rss, SlidersHorizontal, Sun } from "lucide-react";
+import { Download, Folder, Globe, Moon, Plus, Rss, SlidersHorizontal, Sun, Workflow } from "lucide-react";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useT } from "../i18n/I18nContext";
 import { IconButton } from "./IconButton";
 import styles from "./Sidebar.module.css";
 
-export type View = "downloads" | "library" | "sources" | "browser" | "settings";
+export type View = "downloads" | "library" | "sources" | "methods" | "browser" | "settings";
 
 interface SidebarProps {
   view: View;
@@ -73,6 +73,16 @@ export function Sidebar({
         >
           <Rss size={18} aria-hidden />
           <span className={labelClass}>{t.sources.title}</span>
+        </button>
+        <button
+          type="button"
+          className={styles.navItem}
+          aria-current={view === "methods" ? "page" : undefined}
+          onClick={() => onSelectView("methods")}
+          title={t.methods.title}
+        >
+          <Workflow size={18} aria-hidden />
+          <span className={labelClass}>{t.methods.title}</span>
         </button>
         <button
           type="button"

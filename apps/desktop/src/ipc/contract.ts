@@ -226,7 +226,6 @@ export interface Site {
   accounts: Account[];
   selectedAccountId: number | null;
   adBlock: boolean;
-  flowCount: number;
 }
 
 export interface BrowserState {
@@ -267,6 +266,33 @@ export interface SavedFlow {
   scopes: FlowScope[];
   createdAt: number;
   updatedAt: number;
+}
+
+export interface CollectMethod {
+  kind: "rule" | "flow";
+  id: number;
+  name: string;
+  siteId: number | null;
+  /** Registered site name, or the host without "www." when it is not registered. */
+  siteName: string;
+  host: string;
+  /** A rule's match pattern without its trailing "*", or a flow's start URL. */
+  pageUrl: string;
+  /** A rule's link shape; null for a recorded flow. */
+  shape: string | null;
+  /** Number of recorded operations; null for a collect rule. */
+  stepCount: number | null;
+  /** Saved replay scopes; null for a collect rule. */
+  scopes: FlowScope[] | null;
+  destDir: string | null;
+  preset: Preset | null;
+  /** Unix seconds. */
+  lastUsedAt: number | null;
+}
+
+export interface CollectMethodRef {
+  kind: "rule" | "flow";
+  id: number;
 }
 
 export interface FlowReplayItem {
@@ -425,7 +451,7 @@ export interface Commands {
   /** tzOffsetSeconds: -new Date().getTimezoneOffset() * 60, the local UTC offset used
    *  to date files (the webview knows it reliably on every OS). */
   enqueue_urls: {
-    args: { urls: string[]; preset: Preset; tzOffsetSeconds: number };
+    args: { urls: string[]; preset: Preset; tzOffsetSeconds: number; method?: CollectMethodRef | null };
     result: number[];
   };
   /**
@@ -444,6 +470,7 @@ export interface Commands {
       id: string | null;
       images: { url: string; index: number }[];
       tzOffsetSeconds: number;
+      method?: CollectMethodRef | null;
     };
     result: number;
   };
@@ -457,6 +484,7 @@ export interface Commands {
       items: { mediaUrl: string; pageUrl: string; title: string }[];
       preset: Preset;
       tzOffsetSeconds: number;
+      method?: CollectMethodRef | null;
     };
     result: number[];
   };
@@ -594,6 +622,23 @@ export interface Commands {
     args: { name: string; matchPattern: string };
     result: number;
   };
+  /** Lists saved collecting rules and recorded flows with their queue options and last use. */
+  methods_list: { args: Record<string, never>; result: CollectMethod[] };
+  /** Sets or clears a method's absolute destination and quality override. */
+  method_set_options: {
+    args: { kind: "rule" | "flow"; id: number; destDir: string | null; preset: Preset | null };
+    result: null;
+  };
+  /** Trims and replaces a method's display name; an empty name is rejected. */
+  method_rename: {
+    args: { kind: "rule" | "flow"; id: number; name: string };
+    result: null;
+  };
+  /** Deletes a method, except for a rule still referenced by a registered source. */
+  method_delete: {
+    args: { kind: "rule" | "flow"; id: number };
+    result: null;
+  };
   flow_record_start: { args: Record<string, never>; result: null };
   flow_record_stop: { args: Record<string, never>; result: Flow };
   flow_save: {
@@ -601,8 +646,6 @@ export interface Commands {
     result: SavedFlow;
   };
   flow_list: { args: { url: string }; result: SavedFlow[] };
-  /** Settings groups every host associated with one registered site. */
-  flow_list_for_site: { args: { siteId: number }; result: SavedFlow[] };
   flow_rename: { args: { id: number; name: string }; result: null };
   flow_delete: { args: { id: number }; result: null };
   flow_replay: {

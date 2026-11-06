@@ -293,6 +293,29 @@ export interface Translations {
     autoCheckNote: string;
   };
 
+  methods: {
+    title: string;
+    summary: (rules: number, flows: number) => string;
+    emptyBody: string;
+    notRegistered: string;
+    ruleKind: string;
+    flowMeta: (steps: number, scopes: string) => string;
+    destination: (folder: string) => string;
+    defaultDestination: string;
+    quality: (preset: string) => string;
+    lastUsed: (date: string) => string;
+    neverUsed: string;
+    date: (unixSeconds: number, now: Date) => string;
+    use: string;
+    chooseFolder: string;
+    options: string;
+    optionsTitle: (name: string) => string;
+    deleteTitle: (name: string) => string;
+    deleteRuleBody: string;
+    deleteFlowBody: string;
+    ruleInUse: (source: string) => string;
+  };
+
   settings: {
     title: string;
     generalSection: string;
@@ -384,8 +407,8 @@ export interface Translations {
     learnedFlow: string;
     flowStep: (label: string) => string;
     flowScopeThis: string;
-    flowScopeRow: (count: number) => string;
-    flowScopeAll: (count: number) => string;
+    flowScopeRow: (count?: number) => string;
+    flowScopeAll: (count?: number) => string;
     flowReplay: string;
     flowReplaying: string;
     flowProgress: (done: number, total: number) => string;
@@ -473,15 +496,6 @@ export interface Translations {
     deleteSiteMenu: string;
     deleteConfirmTitle: (name: string) => string;
     deleteConfirmBody: (accounts: number) => string;
-    flowCount: (count: number) => string;
-    viewFlows: string;
-    flowsTitle: (site: string) => string;
-    flowSteps: (count: number) => string;
-    renameFlow: string;
-    flowNameLabel: string;
-    flowNameEmpty: string;
-    deleteFlowTitle: (name: string) => string;
-    deleteFlowBody: string;
   };
 
   /** The box in a newly added site's row: what yt-dlp makes of the URL that was added. */

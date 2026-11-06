@@ -258,7 +258,9 @@ export function SourceRow({ source, onRemove }: SourceRowProps) {
 
       {dialog === "options" && settings && (
         <SourceOptionsDialog
-          source={source}
+          title={t.sources.options}
+          destDir={source.destDir}
+          preset={source.preset}
           defaultDir={settings.downloadDir}
           defaultPreset={settings.defaultPreset}
           onSave={(destDir, preset) => setOptions(source.id, destDir, preset)}

@@ -5,13 +5,13 @@
 
 use std::collections::{HashSet, VecDeque};
 use std::future::Future;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, Manager, State, Url};
 use tokio::sync::Notify;
 use vids_core::args::{Cookies, ToolPaths};
@@ -27,6 +27,9 @@ use vids_core::types::ErrorCategory;
 use crate::browser::BrowserProfile;
 use crate::collector::{self, CollectItem, CollectSnapshot};
 use crate::commands::job_options;
+use crate::method_options::{
+    overrides_dest_dir, overrides_preset, validate_dest_dir, with_options,
+};
 use crate::models::{Preset, Settings, SourceAutoCheck};
 use crate::notify::NotifyEvent;
 use crate::sites::{self, Site};
@@ -471,7 +474,7 @@ impl SourceManager {
                 .collector
                 .rule_saved(&self.app, &preview.url, rule_id);
         }
-        self.enqueue_items(&json!({}), &registered.queued)?;
+        self.enqueue_items(&json!({}), registered.rule_id, &registered.queued)?;
         self.updated(registered.id)
     }
 
@@ -526,11 +529,7 @@ impl SourceManager {
         dest_dir: Option<String>,
         preset: Option<Preset>,
     ) -> Result<SourceRow, String> {
-        if let Some(dir) = &dest_dir
-            && !Path::new(dir).is_absolute()
-        {
-            return Err("destDir must be an absolute path".to_owned());
-        }
+        validate_dest_dir(dest_dir.as_deref())?;
         {
             let state = self.state();
             let store = lock_recover(&state.store);
@@ -889,7 +888,7 @@ impl SourceManager {
             return Err(canceled());
         }
         let fresh = new_items(items, &new_keys);
-        self.enqueue_items(&source.overrides, &fresh)
+        self.enqueue_items(&source.overrides, source.rule_id, &fresh)
             .map_err(failure)?;
         lock_recover(&state.store)
             .mark_known(source.id, &new_keys, unix_now())
@@ -899,10 +898,19 @@ impl SourceManager {
 
     /// Queues items like `enqueue_urls`, with the source's quality and destination (else the
     /// current defaults).
-    fn enqueue_items(&self, overrides: &Value, items: &[SourceItem]) -> Result<(), String> {
+    fn enqueue_items(
+        &self,
+        overrides: &Value,
+        rule_id: Option<i64>,
+        items: &[SourceItem],
+    ) -> Result<(), String> {
         let state = self.state();
         let settings = lock_recover(&state.settings).clone();
-        let options = source_job_options(&settings, overrides, self.tz_offset());
+        let rule_options = rule_id
+            .and_then(|id| lock_recover(&state.store).get_rule(id).ok())
+            .map(|rule| rule.options)
+            .unwrap_or_else(|| json!({}));
+        let options = source_job_options(&settings, overrides, &rule_options, self.tz_offset());
         for item in items {
             let (url, options) = job_for_item(&options, item)?;
             state.queue.enqueue(url, options);
@@ -915,6 +923,7 @@ impl SourceManager {
 #[derive(Debug)]
 struct Registered {
     id: i64,
+    rule_id: Option<i64>,
     /// The rule saved for a collect session that had none.
     created_rule: Option<i64>,
     /// The items to queue now: every item for `SaveAll`, none for `Record`.
@@ -996,6 +1005,7 @@ fn register_in_store(
     match added {
         Ok(id) => Ok(Registered {
             id,
+            rule_id,
             created_rule,
             queued,
         }),
@@ -1103,50 +1113,19 @@ fn rule_shape(rule: &Rule) -> Option<String> {
         .map(str::to_owned)
 }
 
-/// A source's destination from its overrides (`destDir`), when it is an absolute path.
-fn overrides_dest_dir(overrides: &Value) -> Option<String> {
-    overrides
-        .get("destDir")
-        .and_then(Value::as_str)
-        .filter(|dir| Path::new(dir).is_absolute())
-        .map(str::to_owned)
-}
-
-/// A source's quality from its overrides (`preset`), when it is a known preset.
-fn overrides_preset(overrides: &Value) -> Option<Preset> {
-    overrides
-        .get("preset")
-        .and_then(|preset| serde_json::from_value(preset.clone()).ok())
-}
-
-/// The overrides with `destDir` and `preset` set (or removed when `None`); other keys
-/// stay as they are.
-fn with_options(overrides: Value, dest_dir: Option<&str>, preset: Option<Preset>) -> Value {
-    let mut object = match overrides {
-        Value::Object(object) => object,
-        _ => Map::new(),
-    };
-    match dest_dir {
-        Some(dir) => object.insert("destDir".to_owned(), json!(dir)),
-        None => object.remove("destDir"),
-    };
-    match preset.and_then(|preset| serde_json::to_value(preset).ok()) {
-        Some(preset) => object.insert("preset".to_owned(), preset),
-        None => object.remove("preset"),
-    };
-    Value::Object(object)
-}
-
 /// A source item's job options: the source's preset (else the default preset) and
 /// destination (else the download folder) on the usual job options.
 fn source_job_options(
     settings: &Settings,
     overrides: &Value,
+    rule_options: &Value,
     tz_offset_seconds: i64,
 ) -> JobOptions {
-    let preset = overrides_preset(overrides).unwrap_or(settings.default_preset);
+    let preset = overrides_preset(overrides)
+        .or_else(|| overrides_preset(rule_options))
+        .unwrap_or(settings.default_preset);
     let mut options = job_options(settings, preset, tz_offset_seconds);
-    if let Some(dir) = overrides_dest_dir(overrides) {
+    if let Some(dir) = overrides_dest_dir(overrides).or_else(|| overrides_dest_dir(rule_options)) {
         options.dest_dir = PathBuf::from(dir);
     }
     options
@@ -1547,7 +1526,6 @@ mod tests {
             accounts,
             selected_account_id,
             ad_block: true,
-            flow_count: 0,
         }
     }
 
@@ -1576,6 +1554,8 @@ mod tests {
                 "/talks/{slug}",
                 5,
             ),
+            options: json!({}),
+            last_used_at: None,
             created_at: 1,
             updated_at: 1,
         }
@@ -1755,21 +1735,39 @@ mod tests {
         let mut settings = Settings::defaults("/videos".to_owned());
         settings.default_preset = Preset::UpTo1080;
 
-        let defaults = source_job_options(&settings, &json!({}), 32_400);
+        let defaults = source_job_options(&settings, &json!({}), &json!({}), 32_400);
         assert_eq!(defaults.dest_dir, PathBuf::from("/videos"));
         assert_eq!(defaults.preset, vids_core::args::Preset::UpTo1080);
         assert_eq!(defaults.tz_offset_seconds, 32_400);
 
         let dir = std::env::current_dir().unwrap().join("blender");
         let overrides = json!({ "destDir": dir.to_string_lossy(), "preset": "audioM4a" });
-        let own = source_job_options(&settings, &overrides, 0);
+        let own = source_job_options(&settings, &overrides, &json!({}), 0);
         assert_eq!(own.dest_dir, dir);
         assert_eq!(own.preset, vids_core::args::Preset::AudioM4a);
+
+        let source_dir = std::env::current_dir().unwrap().join("source");
+        let rule_dir = std::env::current_dir().unwrap().join("rule");
+        let source = json!({ "destDir": source_dir.to_string_lossy() });
+        let rule = json!({ "destDir": rule_dir.to_string_lossy(), "preset": "audioMp3" });
+        let layered = source_job_options(&settings, &source, &rule, 0);
+        assert_eq!(layered.dest_dir, source_dir);
+        assert_eq!(layered.preset, vids_core::args::Preset::AudioMp3);
+
+        let source = json!({ "preset": "upTo720" });
+        let layered = source_job_options(&settings, &source, &rule, 0);
+        assert_eq!(layered.dest_dir, rule_dir);
+        assert_eq!(layered.preset, vids_core::args::Preset::UpTo720);
     }
 
     #[test]
     fn an_item_reachable_only_through_the_list_keeps_the_list_url_and_its_number() {
-        let options = source_job_options(&Settings::defaults("/videos".to_owned()), &json!({}), 0);
+        let options = source_job_options(
+            &Settings::defaults("/videos".to_owned()),
+            &json!({}),
+            &json!({}),
+            0,
+        );
         let (url, value) = job_for_item(
             &options,
             &item("Example:c", "https://example.com/list", Some(9)),

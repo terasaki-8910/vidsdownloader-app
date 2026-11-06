@@ -26,6 +26,8 @@ fn flow_insert_list_rename_and_delete() {
     assert_eq!(flows[0].created_at, 100);
     assert_eq!(flows[0].updated_at, 100);
     assert_eq!(flows[0].scopes_json, serde_json::json!(["this"]));
+    assert_eq!(flows[0].options, serde_json::json!({}));
+    assert_eq!(flows[0].last_used_at, None);
     assert!(
         store
             .list_flows_by_host("other.example")
@@ -38,6 +40,17 @@ fn flow_insert_list_rename_and_delete() {
     assert_eq!(renamed[0].name, "Open and play");
     assert_eq!(renamed[0].created_at, 100);
     assert_eq!(renamed[0].updated_at, 200);
+
+    store
+        .set_flow_options(id, serde_json::json!({"preset": "audioM4a"}))
+        .unwrap();
+    store.set_flow_last_used(id, 250).unwrap();
+    let changed = store.list_all_flows().unwrap();
+    assert_eq!(
+        changed[0].options,
+        serde_json::json!({"preset": "audioM4a"})
+    );
+    assert_eq!(changed[0].last_used_at, Some(250));
 
     store.delete_flow(id).unwrap();
     assert!(store.list_flows_by_host("example.com").unwrap().is_empty());

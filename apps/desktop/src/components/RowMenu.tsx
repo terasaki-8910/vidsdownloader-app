@@ -48,6 +48,8 @@ interface RowMenuProps {
   anchorRef?: RefObject<HTMLElement | null>;
   /** Omits the ellipsis button for menus opened only through an owning row. */
   hideButton?: boolean;
+  /** Source rows keep this out of the tab order; destinations that expose every action can opt in. */
+  buttonTabIndex?: 0 | -1;
   ref?: Ref<RowMenuHandle>;
 }
 
@@ -63,6 +65,7 @@ export function RowMenu({
   onReturnFocus,
   anchorRef,
   hideButton = false,
+  buttonTabIndex = -1,
   ref,
 }: RowMenuProps) {
   const [open, setOpen] = useState(false);
@@ -211,7 +214,7 @@ export function RowMenu({
           aria-expanded={open}
           aria-controls={open ? menuId : undefined}
           disabled={disabled}
-          tabIndex={-1}
+          tabIndex={buttonTabIndex}
           onClick={() => {
             onBeforeOpen?.();
             openedFrom.current = "button";

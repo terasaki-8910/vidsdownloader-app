@@ -17,6 +17,7 @@ import type {
   CollectGroup,
   CollectItem,
   CollectLinks,
+  CollectMethod,
   CollectPage,
   CollectState,
   Commands,
@@ -139,6 +140,7 @@ export let lastCopiedText: string | null = null;
  *  enqueue_urls, so they fall back to UTC. */
 const tzOffsetByJobId = new Map<number, number>();
 const presetByJobId = new Map<number, Preset>();
+const destDirByJobId = new Map<number, string>();
 
 function seedJob(
   row: Omit<JobRow, "listCount" | "listTotal" | "alreadySaved" | "libraryId" | "phase" | "commentsCount" | "pageMediaChoices"> &
@@ -558,7 +560,7 @@ function finishDownload(id: number): void {
   const idMatch = /\/watch\/([a-z0-9]+)/i.exec(job.url) ?? /v=([\w-]+)/.exec(job.url);
   const videoId = idMatch?.[1] ?? String(id);
   const commentsOnly = presetByJobId.get(id) === "commentsOnly";
-  const outputPath = `${settings.downloadDir}\\${folder}\\${dateStr} ${title} [${videoId}]${commentsOnly ? ".comments.json" : ".mp4"}`;
+  const outputPath = `${destDirByJobId.get(id) ?? settings.downloadDir}\\${folder}\\${dateStr} ${title} [${videoId}]${commentsOnly ? ".comments.json" : ".mp4"}`;
   update(id, { state: "Done", progress: 1, outputPath, commentsCount: commentsOnly ? 1250 : null, libraryId: commentsOnly ? null : id === 2 ? 9 : job.libraryId });
   maybeStartNext();
 }
@@ -607,7 +609,8 @@ async function runPageImagesJob(id: number, args: Commands["enqueue_page_images"
   const stem =
     `${dateStr} ${(title ?? host).replace(/\//g, "⧸")}` + (pageId ? ` [${pageId}]` : "");
   const folder = uploader ?? host;
-  const paths = images.map((image) => `${settings.downloadDir}\\${folder}\\${stem} ${image.index}.jpg`);
+  const baseDir = destDirByJobId.get(id) ?? settings.downloadDir;
+  const paths = images.map((image) => `${baseDir}\\${folder}\\${stem} ${image.index}.jpg`);
   let nextLibraryId = library.reduce((max, row) => Math.max(max, row.id), 0) + 1;
   const rows: LibraryRow[] = paths.map((path) => ({
     id: nextLibraryId++,
@@ -894,7 +897,6 @@ function newSite(
     adBlock: true,
     accounts: [account],
     selectedAccountId: account.id,
-    flowCount: 0,
   };
 }
 
@@ -948,9 +950,22 @@ const MOCK_FLOW: Flow = {
   media: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8?card=2",
 };
 
-let nextFlowId = 2;
-let savedFlows: SavedFlow[] = readDebugHash().mockFlow
-  ? [
+const NICONICO_RANKING_URL = "https://www.nicovideo.jp/ranking";
+const NICONICO_MYLIST_URL = "https://www.nicovideo.jp/user/1234567/mylist/7654321";
+
+function mockSteps(url: string, count: number): Flow["steps"] {
+  const steps = structuredClone(MOCK_FLOW.steps);
+  while (steps.length < count) {
+    steps.push({ ...steps[steps.length - 1], pattern: `main [data-mock-step='${steps.length + 1}']` });
+  }
+  return steps.slice(0, count).map((step) => ({ ...step, url }));
+}
+
+const collectMethodsEmpty = readDebugHash().mockCollectMethods === "empty";
+let nextFlowId = 4;
+let savedFlows: SavedFlow[] = collectMethodsEmpty
+  ? []
+  : [
       {
         id: 1,
         siteId: null,
@@ -959,11 +974,128 @@ let savedFlows: SavedFlow[] = readDebugHash().mockFlow
         startUrl: MOCK_FLOW.startUrl,
         steps: structuredClone(MOCK_FLOW.steps),
         scopes: ["restOfRow", "this"],
-        createdAt: nowSeconds() - 3600,
-        updatedAt: nowSeconds() - 3600,
+        createdAt: nowSeconds() - 6 * 86400,
+        updatedAt: nowSeconds() - 6 * 86400,
       },
-    ]
-  : [];
+      {
+        id: 2,
+        siteId: 2,
+        host: "www.nicovideo.jp",
+        name: "ランキングの動画を再生",
+        startUrl: NICONICO_RANKING_URL,
+        steps: mockSteps(NICONICO_RANKING_URL, 2),
+        scopes: ["restOfRow"],
+        createdAt: nowSeconds() - 86400,
+        updatedAt: nowSeconds() - 86400,
+      },
+      {
+        id: 3,
+        siteId: 2,
+        host: "www.nicovideo.jp",
+        name: "週刊ゲーム実況まとめ — 再生リストのページからいちばん新しい回だけを開いて再生する",
+        startUrl: NICONICO_MYLIST_URL,
+        steps: mockSteps(NICONICO_MYLIST_URL, 3),
+        scopes: ["this"],
+        createdAt: nowSeconds() - 5 * 86400,
+        updatedAt: nowSeconds() - 5 * 86400,
+      },
+    ];
+
+let collectMethods: CollectMethod[] = collectMethodsEmpty
+  ? []
+  : [
+      {
+        kind: "rule",
+        id: 1,
+        name: "YouTube ホーム",
+        siteId: 1,
+        siteName: "YouTube",
+        host: "www.youtube.com",
+        pageUrl: "https://www.youtube.com/",
+        shape: "/watch?v={id}",
+        stepCount: null,
+        scopes: null,
+        destDir: null,
+        preset: null,
+        lastUsedAt: nowSeconds() - 2 * 86400,
+      },
+      {
+        kind: "rule",
+        id: 2,
+        name: "NASA のメディア",
+        siteId: 3,
+        siteName: "X",
+        host: "x.com",
+        pageUrl: "https://x.com/NASA/media",
+        shape: "/NASA/status/{num}",
+        stepCount: null,
+        scopes: null,
+        destDir: "D:\\Videos\\X\\NASA",
+        preset: "upTo1080",
+        lastUsedAt: nowSeconds() - 3 * 3600,
+      },
+      {
+        kind: "rule",
+        id: 3,
+        name: "猫 の検索（メディア）",
+        siteId: 3,
+        siteName: "X",
+        host: "x.com",
+        pageUrl: "https://x.com/search",
+        shape: "/{any}/status/{num}",
+        stepCount: null,
+        scopes: null,
+        destDir: null,
+        preset: null,
+        lastUsedAt: null,
+      },
+      {
+        kind: "flow",
+        id: 1,
+        name: "再生（127.0.0.1）",
+        siteId: null,
+        siteName: "127.0.0.1",
+        host: "127.0.0.1",
+        pageUrl: MOCK_FLOW_URL,
+        shape: null,
+        stepCount: 2,
+        scopes: ["restOfRow", "this"],
+        destDir: null,
+        preset: null,
+        lastUsedAt: null,
+      },
+      {
+        kind: "flow",
+        id: 2,
+        name: "ランキングの動画を再生",
+        siteId: 2,
+        siteName: "ニコニコ動画",
+        host: "www.nicovideo.jp",
+        pageUrl: NICONICO_RANKING_URL,
+        shape: null,
+        stepCount: 2,
+        scopes: ["restOfRow"],
+        destDir: "D:\\Videos\\niconico\\ランキング",
+        preset: null,
+        lastUsedAt: nowSeconds() - 86400,
+      },
+      {
+        kind: "flow",
+        id: 3,
+        name: "週刊ゲーム実況まとめ — 再生リストのページからいちばん新しい回だけを開いて再生する",
+        siteId: 2,
+        siteName: "ニコニコ動画",
+        host: "www.nicovideo.jp",
+        pageUrl: NICONICO_MYLIST_URL,
+        shape: null,
+        stepCount: 3,
+        scopes: ["this"],
+        destDir: null,
+        preset: null,
+        lastUsedAt: nowSeconds() - 5 * 86400,
+      },
+    ];
+
 
 const SAMPLE_COLLECT_ITEMS: CollectItem[] = [
   {
@@ -1126,7 +1258,7 @@ function mockOtherLinks(found: MockCollectPage, shape: string): CollectLinks | n
 
 let collectState: CollectState | null = null;
 let collectTimer: ReturnType<typeof setTimeout> | null = null;
-let nextRuleId = 1;
+let nextRuleId = 4;
 
 function emitCollect(): void {
   if (collectState) emit("collect-state", structuredClone(collectState));
@@ -1600,12 +1732,14 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
       return [...jobs.values()];
 
     case "enqueue_urls": {
-      const { urls, preset, tzOffsetSeconds } = args as Commands["enqueue_urls"]["args"];
+      const { urls, preset, tzOffsetSeconds, method: methodRef } = args as Commands["enqueue_urls"]["args"];
+      const method = methodRef && collectMethods.find((item) => item.kind === methodRef.kind && item.id === methodRef.id);
       const ids: number[] = [];
       for (const url of urls) {
         const id = nextJobId++;
         tzOffsetByJobId.set(id, tzOffsetSeconds);
-        presetByJobId.set(id, preset);
+        presetByJobId.set(id, method?.preset ?? preset);
+        if (method?.destDir) destDirByJobId.set(id, method.destDir);
         const row: JobRow = {
           id,
           url,
@@ -1631,6 +1765,7 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
         ids.push(id);
       }
       maybeStartNext();
+      if (method && ids.length > 0) method.lastUsedAt = nowSeconds();
       return ids;
     }
 
@@ -1641,6 +1776,8 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
       if (page.images.some((image) => image.index < 1)) throw new Error("an image number is below 1");
       const id = nextJobId++;
       tzOffsetByJobId.set(id, page.tzOffsetSeconds);
+      const method = page.method && collectMethods.find((item) => item.kind === page.method?.kind && item.id === page.method?.id);
+      if (method?.destDir) destDirByJobId.set(id, method.destDir);
       const row: JobRow = {
         id,
         url: page.pageUrl,
@@ -1664,11 +1801,13 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
       jobs.set(id, row);
       emit("job-updated", row);
       void runPageImagesJob(id, page);
+      if (method) method.lastUsedAt = nowSeconds();
       return id;
     }
 
     case "enqueue_page_media": {
       const request = args as Commands["enqueue_page_media"]["args"];
+      const method = request.method && collectMethods.find((item) => item.kind === request.method?.kind && item.id === request.method?.id);
       if (request.items.length === 0) throw new Error("no page media were chosen");
       const ids: number[] = [];
       for (const item of request.items) {
@@ -1676,6 +1815,8 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
         parseHttpUrl(item.mediaUrl);
         const id = nextJobId++;
         tzOffsetByJobId.set(id, request.tzOffsetSeconds);
+        presetByJobId.set(id, method?.preset ?? request.preset);
+        if (method?.destDir) destDirByJobId.set(id, method.destDir);
         const row: JobRow = {
           id,
           url: item.pageUrl,
@@ -1701,6 +1842,7 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
         ids.push(id);
       }
       maybeStartNext();
+      if (method && ids.length > 0) method.lastUsedAt = nowSeconds();
       return ids;
     }
 
@@ -2121,6 +2263,12 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
       const { shape, maxScrolls } = args as Commands["collect_start"]["args"];
       const found = mockCollectFor(browserState.url);
       const selectedShape = shape ?? found.defaultShape;
+      const savedRule = collectMethods.find(
+        (item) =>
+          item.kind === "rule" &&
+          item.shape === selectedShape &&
+          browserState.url?.startsWith(item.pageUrl),
+      );
       collectState = {
         running: true,
         scrolls: collectState?.scrolls ?? 0,
@@ -2129,7 +2277,7 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
         shape: selectedShape,
         items: found.itemsFor(selectedShape),
         adsExcluded: settings.collectIncludeAds ? 0 : found.adsExcluded,
-        ruleId: collectState?.ruleId ?? null,
+        ruleId: savedRule?.id ?? null,
         error: null,
         page: { ...found.page },
         otherLinks: mockOtherLinks(found, selectedShape),
@@ -2188,9 +2336,79 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
 
     case "collect_save_rule":
       if (!collectState?.shape) throw new Error("no link shape is selected");
-      collectState.ruleId = nextRuleId++;
+      {
+        const { name, matchPattern } = args as Commands["collect_save_rule"]["args"];
+        const pageUrl = matchPattern.replace(/\*$/, "");
+        const parsed = parseHttpUrl(pageUrl);
+        const siteId = siteIdForUrl(pageUrl);
+        const site = sites.find((item) => item.id === siteId);
+        collectState.ruleId = nextRuleId++;
+        collectMethods.push({
+          kind: "rule",
+          id: collectState.ruleId,
+          name: name.trim(),
+          siteId,
+          siteName: site?.name ?? parsed.hostname.toLowerCase().replace(/^www\./, ""),
+          host: parsed.hostname.toLowerCase(),
+          pageUrl,
+          shape: collectState.shape,
+          stepCount: null,
+          scopes: null,
+          destDir: null,
+          preset: null,
+          lastUsedAt: null,
+        });
+      }
       emitCollect();
       return collectState.ruleId;
+
+    case "methods_list":
+      return structuredClone(collectMethods);
+
+    case "method_set_options": {
+      const { kind, id, destDir, preset } = args as Commands["method_set_options"]["args"];
+      const method = collectMethods.find((item) => item.kind === kind && item.id === id);
+      if (!method) throw new Error(`${kind} ${id} was not found`);
+      if (destDir !== null && !/^([A-Za-z]:[\\/]|\/)/.test(destDir)) {
+        throw new Error("destDir must be an absolute path");
+      }
+      method.destDir = destDir;
+      method.preset = preset;
+      return null;
+    }
+
+    case "method_rename": {
+      const { kind, id, name } = args as Commands["method_rename"]["args"];
+      const method = collectMethods.find((item) => item.kind === kind && item.id === id);
+      if (!method) throw new Error(`${kind} ${id} was not found`);
+      const trimmed = name.trim();
+      if (!trimmed) throw new Error("name must not be empty");
+      method.name = trimmed;
+      if (kind === "flow") {
+        const flow = savedFlows.find((item) => item.id === id);
+        if (flow) {
+          flow.name = method.name;
+          flow.updatedAt = nowSeconds();
+        }
+      }
+      return null;
+    }
+
+    case "method_delete": {
+      const { kind, id } = args as Commands["method_delete"]["args"];
+      const index = collectMethods.findIndex((item) => item.kind === kind && item.id === id);
+      if (index < 0) throw new Error(`${kind} ${id} was not found`);
+      if (kind === "rule" && id === 2) throw new Error("rule-in-use:NASA のメディア");
+      collectMethods.splice(index, 1);
+      if (kind === "flow") {
+        const flowIndex = savedFlows.findIndex((item) => item.id === id);
+        if (flowIndex >= 0) {
+          savedFlows.splice(flowIndex, 1);
+          emitSites();
+        }
+      }
+      return null;
+    }
 
     case "flow_record_start":
       emit("flow-record-progress", { steps: 0 });
@@ -2216,7 +2434,22 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
         updatedAt: now,
       };
       savedFlows.unshift(saved);
-      if (siteId !== null) siteById(siteId).flowCount += 1;
+      const site = sites.find((item) => item.id === siteId);
+      collectMethods.push({
+        kind: "flow",
+        id: saved.id,
+        name: saved.name,
+        siteId,
+        siteName: site?.name ?? parsed.hostname.toLowerCase().replace(/^www\./, ""),
+        host: saved.host,
+        pageUrl: saved.startUrl,
+        shape: null,
+        stepCount: saved.steps.length,
+        scopes: [...saved.scopes],
+        destDir: null,
+        preset: null,
+        lastUsedAt: null,
+      });
       emitSites();
       return structuredClone(saved);
     }
@@ -2226,17 +2459,14 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
       return structuredClone(savedFlows.filter((flow) => flow.host === host));
     }
 
-    case "flow_list_for_site": {
-      const { siteId } = args as Commands["flow_list_for_site"]["args"];
-      return structuredClone(savedFlows.filter((flow) => flow.siteId === siteId));
-    }
-
     case "flow_rename": {
       const { id, name } = args as Commands["flow_rename"]["args"];
       const flow = savedFlows.find((item) => item.id === id);
       if (!flow) throw new Error(`flow ${id} was not found`);
       flow.name = name.trim();
       flow.updatedAt = nowSeconds();
+      const method = collectMethods.find((item) => item.kind === "flow" && item.id === id);
+      if (method) method.name = flow.name;
       return null;
     }
 
@@ -2244,8 +2474,8 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
       const { id } = args as Commands["flow_delete"]["args"];
       const index = savedFlows.findIndex((flow) => flow.id === id);
       if (index >= 0) {
-        const [deleted] = savedFlows.splice(index, 1);
-        if (deleted.siteId !== null) siteById(deleted.siteId).flowCount -= 1;
+        savedFlows.splice(index, 1);
+        collectMethods = collectMethods.filter((item) => item.kind !== "flow" || item.id !== id);
         emitSites();
       }
       return null;
@@ -2303,7 +2533,9 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
     case "source_set_options": {
       const { id, destDir, preset } = args as Commands["source_set_options"]["args"];
       sourceById(id);
-      if (destDir !== null && !/^([A-Za-z]:[\\/]|\/)/.test(destDir)) throw new Error("the folder must be an absolute path");
+      if (destDir !== null && !/^([A-Za-z]:[\\/]|\/)/.test(destDir)) {
+        throw new Error("destDir must be an absolute path");
+      }
       return { ...patchSource(id, { destDir, preset }) } as SourceRow;
     }
 

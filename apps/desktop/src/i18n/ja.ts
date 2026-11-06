@@ -322,6 +322,29 @@ export const ja: Translations = {
     autoCheckNote: "アプリを開いている間だけ確認します。",
   },
 
+  methods: {
+    title: "集め方",
+    summary: (rules, flows) => `規則 ${rules} · 手順 ${flows}`,
+    emptyBody: "ブラウザの「集める」で規則を保存するか、「手順を覚える」で手順を保存すると、ここに並びます。",
+    notRegistered: "登録していないサイト",
+    ruleKind: "集める規則",
+    flowMeta: (steps, scopes) => `覚えた手順 · ${steps} 個の操作 · ${scopes}`,
+    destination: (folder) => `保存先: ${folder}`,
+    defaultDestination: "保存先: ふつうの保存先",
+    quality: (preset) => `画質: ${preset}`,
+    lastUsed: (date) => `最後に使った日: ${date}`,
+    neverUsed: "まだ使っていません",
+    date: dayOf,
+    use: "使う",
+    chooseFolder: "選ぶ…",
+    options: "保存先と画質…",
+    optionsTitle: (name) => `「${name}」の保存先と画質`,
+    deleteTitle: (name) => `「${name}」を削除しますか？`,
+    deleteRuleBody: "このページで「集める」を押しても、この規則は使われなくなります。",
+    deleteFlowBody: "保存した手順から消えます。",
+    ruleInUse: (source) => `ソース「${source}」がこの規則を使っています。先にソースを削除してください。`,
+  },
+
   settings: {
     title: "設定",
     generalSection: "一般",
@@ -403,8 +426,8 @@ export const ja: Translations = {
     learnedFlow: "覚えた手順",
     flowStep: (label) => `${label} を押す`,
     flowScopeThis: "この1つ",
-    flowScopeRow: (count) => `この列の残り（${count}）`,
-    flowScopeAll: (count) => `同じ種類すべて（${count}）`,
+    flowScopeRow: (count) => count == null ? "この列の残り" : `この列の残り（${count}）`,
+    flowScopeAll: (count) => count == null ? "同じ種類すべて" : `同じ種類すべて（${count}）`,
     flowReplay: "くり返して集める",
     flowReplaying: "集めています…",
     flowProgress: (done, total) => `${done} / ${total}`,
@@ -490,15 +513,6 @@ export const ja: Translations = {
     // No-break spaces keep "アカウント N 件" and "この PC から" from splitting across lines.
     deleteConfirmBody: (accounts) =>
       `このサイトのログイン情報（アカウント\u00a0${accounts}\u00a0件）も、この\u00a0PC\u00a0から消えます。`,
-    flowCount: (count) => `覚えた手順 ${count} 件`,
-    viewFlows: "覚えた手順を見る",
-    flowsTitle: (site) => `${site} の覚えた手順`,
-    flowSteps: (count) => `${count} 手順`,
-    renameFlow: "名前を変更",
-    flowNameLabel: "手順の名前",
-    flowNameEmpty: "名前を入力してください",
-    deleteFlowTitle: (name) => `「${name}」を削除しますか？`,
-    deleteFlowBody: "この覚えた手順を削除します。",
   },
 
   siteReport: {

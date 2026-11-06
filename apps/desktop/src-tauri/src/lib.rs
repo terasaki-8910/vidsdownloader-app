@@ -8,6 +8,8 @@ mod flow;
 mod library_commands;
 mod login_import;
 mod media;
+mod method_options;
+mod methods;
 mod models;
 mod notify;
 mod page_media;
@@ -48,13 +50,14 @@ use crate::comments_commands::{
     comments_extract, comments_resolve, file_extract_comments, pick_video_file,
 };
 use crate::flow::{
-    flow_delete, flow_list, flow_list_for_site, flow_record_start, flow_record_stop, flow_rename,
-    flow_replay, flow_replay_cancel, flow_save,
+    flow_delete, flow_list, flow_record_start, flow_record_stop, flow_rename, flow_replay,
+    flow_replay_cancel, flow_save,
 };
 use crate::library_commands::{
     library_forget, library_open, library_open_with, library_rename, library_trash,
 };
 use crate::login_import::{firefox_import, firefox_profiles_info};
+use crate::methods::{method_delete, method_rename, method_set_options, methods_list};
 use crate::models::Settings;
 use crate::site_probe::site_probe;
 use crate::sources::{
@@ -233,11 +236,14 @@ pub fn run() {
             collect_close,
             collect_reveal,
             collect_save_rule,
+            methods_list,
+            method_set_options,
+            method_rename,
+            method_delete,
             flow_record_start,
             flow_record_stop,
             flow_save,
             flow_list,
-            flow_list_for_site,
             flow_rename,
             flow_delete,
             flow_replay,

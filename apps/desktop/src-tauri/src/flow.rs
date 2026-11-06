@@ -272,15 +272,6 @@ impl FlowManager {
             .collect()
     }
 
-    pub fn list_for_site(&self, site_id: i64) -> Result<Vec<SavedFlow>, String> {
-        lock_recover(&self.store)
-            .list_flows_by_site(site_id)
-            .map_err(|error| error.to_string())?
-            .into_iter()
-            .map(saved_flow_from_store)
-            .collect()
-    }
-
     pub fn rename(&self, id: i64, name: &str, now: i64) -> Result<(), String> {
         let name = validate_name(name)?;
         lock_recover(&self.store)
@@ -723,14 +714,6 @@ pub async fn flow_save(
 #[tauri::command]
 pub async fn flow_list(url: String, state: State<'_, AppState>) -> Result<Vec<SavedFlow>, String> {
     state.flow.list(&url)
-}
-
-#[tauri::command]
-pub async fn flow_list_for_site(
-    site_id: i64,
-    state: State<'_, AppState>,
-) -> Result<Vec<SavedFlow>, String> {
-    state.flow.list_for_site(site_id)
 }
 
 #[tauri::command]

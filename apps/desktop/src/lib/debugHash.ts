@@ -4,11 +4,13 @@
 // browser tray can be opened without clicks with #view=browser&mockCollect=1 (links) or
 // #view=browser&mockCollect=images (page images). List
 // screenshots can use #select=<id>,<id>, then #menu=<id> and #confirm=delete. This is
-// not app routing -- real navigation is plain React state. Read once on mount.
+// not app routing -- real navigation is plain React state. Collect-method screenshots use
+// #view=methods, #mockCollectMethods=empty, #methodsMenu=<kind>-<id>, and
+// #methodsDialog=<kind>-<id>. Read once on mount.
 import type { Language, Theme } from "../ipc/contract";
 
 export interface DebugHashState {
-  view?: "downloads" | "library" | "sources" | "browser" | "settings";
+  view?: "downloads" | "library" | "sources" | "methods" | "browser" | "settings";
   theme?: Theme;
   language?: Language;
   /** Opens the settings view on this section (the same as #view=settings plus the section). */
@@ -41,6 +43,12 @@ export interface DebugHashState {
   mockMulti?: boolean;
   /** Mock backend only: X uses Firefox and Bilibili a cookies.txt file. */
   mockMethods?: boolean;
+  /** Mock backend only: remove every saved collect rule and recorded flow. */
+  mockCollectMethods?: "empty";
+  /** Opens one collect-method row's menu once, e.g. "rule-2". */
+  methodsMenu?: { kind: "rule" | "flow"; id: number };
+  /** Opens one collect-method row's destination and quality dialog once. */
+  methodsDialog?: { kind: "rule" | "flow"; id: number };
   /** Mock backend only: trash / forget leave side files ("sideFiles") or traces ("traces") behind. */
   mockErase?: "sideFiles" | "traces";
   /**
@@ -95,6 +103,7 @@ export function readDebugHash(): DebugHashState {
     view === "downloads" ||
     view === "library" ||
     view === "sources" ||
+    view === "methods" ||
     view === "browser" ||
     view === "settings"
   ) {
@@ -143,6 +152,14 @@ export function readDebugHash(): DebugHashState {
   if (mockLogin) state.mockLogin = mockLogin;
   if (params.get("mockMulti") === "1") state.mockMulti = true;
   if (params.get("mockMethods") === "1") state.mockMethods = true;
+  if (params.get("mockCollectMethods") === "empty") state.mockCollectMethods = "empty";
+  const methodKey = /^(rule|flow)-(\d+)$/;
+  const methodsMenu = params.get("methodsMenu")?.match(methodKey);
+  if (methodsMenu) state.methodsMenu = { kind: methodsMenu[1] as "rule" | "flow", id: Number(methodsMenu[2]) };
+  const methodsDialog = params.get("methodsDialog")?.match(methodKey);
+  if (methodsDialog) {
+    state.methodsDialog = { kind: methodsDialog[1] as "rule" | "flow", id: Number(methodsDialog[2]) };
+  }
   const mockErase = params.get("mockErase");
   if (mockErase === "sideFiles" || mockErase === "traces") state.mockErase = mockErase;
   const mockFirefox = params.get("mockFirefox");

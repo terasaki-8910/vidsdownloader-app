@@ -1,0 +1,44 @@
+.groups {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+}
+
+.group {
+  margin: 0;
+}
+
+/* Settings' section-title step: 15px semibold, with the same site badge as SourceRow. */
+.groupHeading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 14px 28px 10px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.unregistered {
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.groups .list {
+  min-height: auto;
+  flex: none;
+  overflow: visible;
+}
+
+@media (max-width: 560px) {
+  .groupHeading {
+    flex-wrap: wrap;
+  }
+
+  .unregistered {
+    flex-basis: 100%;
+    margin-left: 40px;
+  }
+}

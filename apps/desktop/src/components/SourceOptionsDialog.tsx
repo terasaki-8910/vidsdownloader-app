@@ -4,7 +4,7 @@
 // control. Both choices default to the app's current ones, shown in the "default" entries.
 import { useEffect, useId, useRef, useState, type MouseEvent } from "react";
 import { ipc } from "../ipc";
-import type { Preset, SourceRow } from "../ipc/contract";
+import type { Preset } from "../ipc/contract";
 import { useT } from "../i18n/I18nContext";
 import { errorMessage } from "../lib/url";
 import dialogStyles from "./ConfirmDialog.module.css";
@@ -14,23 +14,35 @@ import styles from "./SourceOptionsDialog.module.css";
 const PRESETS: Preset[] = ["best", "upTo1080", "upTo720", "compatibilityH264", "audioM4a", "audioMp3"];
 
 interface SourceOptionsDialogProps {
-  source: SourceRow;
+  title: string;
+  destDir: string | null;
+  preset: Preset | null;
   /** The download folder and quality preset a source without its own uses. */
   defaultDir: string;
   defaultPreset: Preset;
+  changeFolderLabel?: string;
   onSave: (destDir: string | null, preset: Preset | null) => Promise<void>;
   /** The dialog was closed, saved or not. */
   onClose: () => void;
 }
 
-export function SourceOptionsDialog({ source, defaultDir, defaultPreset, onSave, onClose }: SourceOptionsDialogProps) {
+export function SourceOptionsDialog({
+  title,
+  destDir,
+  preset: initialPreset,
+  defaultDir,
+  defaultPreset,
+  changeFolderLabel,
+  onSave,
+  onClose,
+}: SourceOptionsDialogProps) {
   const t = useT();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const firstRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const qualityId = useId();
-  const [dir, setDir] = useState<string | null>(source.destDir);
-  const [preset, setPreset] = useState<Preset | null>(source.preset);
+  const [dir, setDir] = useState<string | null>(destDir);
+  const [preset, setPreset] = useState<Preset | null>(initialPreset);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,7 +67,7 @@ export function SourceOptionsDialog({ source, defaultDir, defaultPreset, onSave,
 
   async function save() {
     if (busy) return;
-    if (dir === source.destDir && preset === source.preset) {
+    if (dir === destDir && preset === initialPreset) {
       close();
       return;
     }
@@ -83,7 +95,7 @@ export function SourceOptionsDialog({ source, defaultDir, defaultPreset, onSave,
     >
       <div className={dialogStyles.inner}>
         <h2 id={titleId} className={dialogStyles.title}>
-          {t.sources.options}
+          {title}
         </h2>
 
         <div className={styles.fields}>
@@ -103,7 +115,7 @@ export function SourceOptionsDialog({ source, defaultDir, defaultPreset, onSave,
                 disabled={busy}
                 onClick={() => void pickFolder()}
               >
-                {t.sources.optionsChangeFolder}
+                {changeFolderLabel ?? t.sources.optionsChangeFolder}
               </button>
             </div>
             <button

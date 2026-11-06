@@ -25,6 +25,8 @@ use vids_core::tools::{
 
 use crate::library_commands::finish_erasing_job_records;
 use crate::media::job_file_path;
+use crate::method_options::{overrides_dest_dir, overrides_preset};
+use crate::methods::{QueueMethod, method_options, record_method_use as record_use, unix_now};
 use crate::models::{
     JobRemoved, JobRow, LibraryRow, Preset, Settings, ToolId, ToolPhase, ToolProgress, ToolStatus,
 };
@@ -125,17 +127,21 @@ pub async fn enqueue_urls(
     urls: Vec<String>,
     preset: Preset,
     tz_offset_seconds: i64,
+    method: Option<QueueMethod>,
     state: State<'_, AppState>,
 ) -> Result<Vec<u64>, String> {
     let settings = lock_recover(&state.settings).clone();
-    let options = job_options(&settings, preset, tz_offset_seconds);
+    let (method, overrides) = resolved_method(&state, method);
+    let options = job_options_with_method(&settings, preset, tz_offset_seconds, overrides.as_ref());
     let options = serde_json::to_value(options)
         .map_err(|error| format!("could not serialize job options: {error}"))?;
 
-    Ok(filter_enqueue_urls(&urls)
+    let queued = filter_enqueue_urls(&urls)
         .into_iter()
         .map(|url| state.queue.enqueue(url, options.clone()).0)
-        .collect())
+        .collect::<Vec<_>>();
+    record_method_use(&state, method, !queued.is_empty())?;
+    Ok(queued)
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -153,6 +159,7 @@ pub async fn enqueue_page_media(
     items: Vec<PageMediaArg>,
     preset: Preset,
     tz_offset_seconds: i64,
+    method: Option<QueueMethod>,
     state: State<'_, AppState>,
 ) -> Result<Vec<u64>, String> {
     if items.is_empty() {
@@ -164,12 +171,24 @@ pub async fn enqueue_page_media(
         ));
     }
     let settings = lock_recover(&state.settings).clone();
-    let mut queued = Vec::with_capacity(items.len());
+    let (method, overrides) = resolved_method(&state, method);
+    let effective_preset = overrides
+        .as_ref()
+        .and_then(overrides_preset)
+        .unwrap_or(preset);
+    let mut planned = Vec::with_capacity(items.len());
     let mut seen = HashSet::new();
     for item in items {
         let facts = state.collector.page_facts(item.page_url.trim());
-        let (page_url, options) =
-            page_media_options(&settings, preset, tz_offset_seconds, item, facts.as_ref())?;
+        let (page_url, options) = page_media_options(
+            &settings,
+            effective_preset,
+            tz_offset_seconds,
+            item,
+            facts.as_ref(),
+        )?;
+        let mut options = options;
+        apply_destination_override(&mut options, overrides.as_ref());
         let media_url = options
             .page_media
             .as_ref()
@@ -181,11 +200,16 @@ pub async fn enqueue_page_media(
         }
         let options = serde_json::to_value(options)
             .map_err(|error| format!("could not serialize job options: {error}"))?;
-        queued.push(state.queue.enqueue(page_url, options).0);
+        planned.push((page_url, options));
     }
-    if queued.is_empty() {
+    if planned.is_empty() {
         return Err("no distinct page media were chosen".to_owned());
     }
+    let queued = planned
+        .into_iter()
+        .map(|(page_url, options)| state.queue.enqueue(page_url, options).0)
+        .collect::<Vec<_>>();
+    record_method_use(&state, method, true)?;
     Ok(queued)
 }
 
@@ -241,6 +265,7 @@ pub async fn enqueue_page_images(
     id: Option<String>,
     images: Vec<PageImageArg>,
     tz_offset_seconds: Option<i64>,
+    method: Option<QueueMethod>,
     state: State<'_, AppState>,
 ) -> Result<u64, String> {
     let page_url = page_url.trim().to_owned();
@@ -257,16 +282,59 @@ pub async fn enqueue_page_images(
     }
     .unwrap_or_else(|| site_from_url(&page_url));
     let settings = lock_recover(&state.settings).clone();
+    let (method, overrides) = resolved_method(&state, method);
     let mut options = job_options(
         &settings,
         settings.default_preset,
         tz_offset_seconds.unwrap_or(0),
     );
+    apply_destination_override(&mut options, overrides.as_ref());
     options.site_name = Some(site_name);
     options.page_images = Some(page);
     let options = serde_json::to_value(options)
         .map_err(|error| format!("could not serialize job options: {error}"))?;
-    Ok(state.queue.enqueue(page_url, options).0)
+    let id = state.queue.enqueue(page_url, options).0;
+    record_method_use(&state, method, true)?;
+    Ok(id)
+}
+
+fn resolved_method(
+    state: &AppState,
+    method: Option<QueueMethod>,
+) -> (Option<QueueMethod>, Option<serde_json::Value>) {
+    let Some(method) = method else {
+        return (None, None);
+    };
+    match method_options(&lock_recover(&state.store), method) {
+        Some(options) => (Some(method), Some(options)),
+        None => (None, None),
+    }
+}
+
+fn record_method_use(
+    state: &AppState,
+    method: Option<QueueMethod>,
+    queued: bool,
+) -> Result<(), String> {
+    record_use(&lock_recover(&state.store), method, queued, unix_now())
+}
+
+fn job_options_with_method(
+    settings: &Settings,
+    preset: Preset,
+    tz_offset_seconds: i64,
+    overrides: Option<&serde_json::Value>,
+) -> JobOptions {
+    let preset = overrides.and_then(overrides_preset).unwrap_or(preset);
+    let mut options = job_options(settings, preset, tz_offset_seconds);
+    apply_destination_override(&mut options, overrides);
+    options
+}
+
+fn apply_destination_override(options: &mut JobOptions, overrides: Option<&serde_json::Value>) {
+    if let Some(dir) = overrides.and_then(overrides_dest_dir) {
+        options.dest_dir = PathBuf::from(dir);
+    }
 }
 
 /// Checks and bounds a page-images request: http(s) image URLs, numbers from 1, each URL
@@ -1110,6 +1178,26 @@ mod tests {
         assert_eq!(clamp_tz_offset_seconds(1_800), 1_800);
         assert_eq!(clamp_tz_offset_seconds(50_400), 50_400);
         assert_eq!(clamp_tz_offset_seconds(60_000), 50_400);
+    }
+
+    #[test]
+    fn method_options_override_each_queue_default_independently() {
+        let general_dir = std::env::current_dir().unwrap().join("general");
+        let method_dir = std::env::current_dir().unwrap().join("method");
+        let settings = Settings::defaults(general_dir.to_string_lossy().into_owned());
+        let fallback = job_options_with_method(&settings, Preset::UpTo1080, 0, None);
+        assert_eq!(fallback.dest_dir, general_dir);
+        assert_eq!(fallback.preset, vids_core::args::Preset::UpTo1080);
+
+        let dir_only = json!({ "destDir": method_dir.to_string_lossy() });
+        let options = job_options_with_method(&settings, Preset::UpTo720, 0, Some(&dir_only));
+        assert_eq!(options.dest_dir, method_dir);
+        assert_eq!(options.preset, vids_core::args::Preset::UpTo720);
+
+        let preset_only = json!({ "preset": "audioM4a" });
+        let options = job_options_with_method(&settings, Preset::Best, 0, Some(&preset_only));
+        assert_eq!(options.dest_dir, general_dir);
+        assert_eq!(options.preset, vids_core::args::Preset::AudioM4a);
     }
 
     #[test]

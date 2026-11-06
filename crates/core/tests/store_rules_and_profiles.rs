@@ -19,6 +19,8 @@ fn rule_crud_roundtrip() {
     assert_eq!(rule.name, "TED talks");
     assert_eq!(rule.match_pattern, "https://www.ted.com/talks*");
     assert_eq!(rule.rule_json, serde_json::json!({"fetch": "static"}));
+    assert_eq!(rule.options, serde_json::json!({}));
+    assert_eq!(rule.last_used_at, None);
     assert_eq!(rule.created_at, 100);
     assert_eq!(rule.updated_at, 100);
 
@@ -36,6 +38,17 @@ fn rule_crud_roundtrip() {
     assert_eq!(updated.created_at, 100);
     assert_eq!(updated.updated_at, 200);
     assert_eq!(updated.rule_json, serde_json::json!({"fetch": "rendered"}));
+
+    store
+        .set_rule_options(id, serde_json::json!({"destDir": "/videos"}))
+        .unwrap();
+    store.set_rule_last_used(id, 250).unwrap();
+    store.rename_rule(id, "Renamed", 300).unwrap();
+    let changed = store.get_rule(id).unwrap();
+    assert_eq!(changed.name, "Renamed");
+    assert_eq!(changed.rule_json["name"], "Renamed");
+    assert_eq!(changed.options, serde_json::json!({"destDir": "/videos"}));
+    assert_eq!(changed.last_used_at, Some(250));
 
     assert_eq!(store.list_rules().unwrap().len(), 1);
 

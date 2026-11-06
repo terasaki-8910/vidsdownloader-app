@@ -66,7 +66,15 @@ fn version_one_database_gains_queue_persistence_columns() {
         let conn = rusqlite::Connection::open(&path).unwrap();
         // Every real database has `sources` since v1; v4 adds a column to it.
         conn.execute_batch(
-            "CREATE TABLE sources (
+            "CREATE TABLE rules (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                match_pattern TEXT NOT NULL,
+                rule_json TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            CREATE TABLE sources (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
                 url TEXT NOT NULL UNIQUE,
@@ -126,7 +134,7 @@ fn version_one_database_gains_queue_persistence_columns() {
     assert_eq!(
         conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
             .unwrap(),
-        5
+        6
     );
 }
 
@@ -138,7 +146,15 @@ fn version_two_database_gains_the_already_saved_column() {
         let conn = rusqlite::Connection::open(&path).unwrap();
         // Every real database has `sources` since v1; v4 adds a column to it.
         conn.execute_batch(
-            "CREATE TABLE sources (
+            "CREATE TABLE rules (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                match_pattern TEXT NOT NULL,
+                rule_json TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            CREATE TABLE sources (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
                 url TEXT NOT NULL UNIQUE,
@@ -200,7 +216,7 @@ fn version_two_database_gains_the_already_saved_column() {
     assert_eq!(
         conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
             .unwrap(),
-        5
+        6
     );
 }
 
@@ -251,6 +267,58 @@ fn version_three_database_gains_the_source_result_column() {
     assert_eq!(
         conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
             .unwrap(),
-        5
+        6
+    );
+}
+
+#[test]
+fn version_five_methods_gain_empty_options_and_no_last_use() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("v5.sqlite3");
+    {
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE rules (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                match_pattern TEXT NOT NULL,
+                rule_json TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            CREATE TABLE flows (
+                id INTEGER PRIMARY KEY,
+                site_id INTEGER,
+                host TEXT NOT NULL,
+                name TEXT NOT NULL,
+                start_url TEXT NOT NULL,
+                steps_json TEXT NOT NULL,
+                scopes_json TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            INSERT INTO rules VALUES
+                (2, 'Old rule', 'https://example.com/*', '{\"name\":\"Old rule\"}', 10, 10);
+            INSERT INTO flows VALUES
+                (3, NULL, 'example.com', 'Old flow', 'https://example.com/', '[]', '[]', 20, 20);
+            PRAGMA user_version = 5;",
+        )
+        .unwrap();
+    }
+
+    let store = Store::open(&path).expect("v5 migrates to v6");
+    let rule = store.get_rule(2).unwrap();
+    assert_eq!(rule.options, serde_json::json!({}));
+    assert_eq!(rule.last_used_at, None);
+    let flow = store.list_all_flows().unwrap().remove(0);
+    assert_eq!(flow.options, serde_json::json!({}));
+    assert_eq!(flow.last_used_at, None);
+    drop(store);
+
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    assert_eq!(
+        conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+            .unwrap(),
+        6
     );
 }

@@ -285,7 +285,6 @@ mod tests {
             accounts,
             selected_account_id: selected,
             ad_block: true,
-            flow_count: 0,
         }
     }
 

@@ -25,6 +25,7 @@ import { hasLoginInfo, selectedAccount, siteHomeUrl, siteStartStatus } from "../
 import { registerFailureText } from "../lib/sources";
 import { errorMessage, normalizeUrl } from "../lib/url";
 import { useJobs } from "../state/JobsContext";
+import { useNavigation } from "../state/NavigationContext";
 import { useSettings } from "../state/SettingsContext";
 import { useSites } from "../state/SitesContext";
 import { useSources } from "../state/SourcesContext";
@@ -52,6 +53,7 @@ export function BrowserView({ onOpenSites }: BrowserViewProps) {
   const t = useT();
   const { settings } = useSettings();
   const { enqueue, enqueuePageImages, enqueuePageMedia } = useJobs();
+  const { flowRequest } = useNavigation();
   const { sites, browser, browserError, openUrl, showStartPage, finishLogin, cancelLogin, collectRequest, clearCollectRequest } =
     useSites();
   const { sources, phase: sourcePhase, registerFromCollect } = useSources();
@@ -95,6 +97,8 @@ export function BrowserView({ onOpenSites }: BrowserViewProps) {
   const [flowSaved, setFlowSaved] = useState(false);
   /** The steps came from a stored flow, so nothing was saved just now. */
   const [flowFromStore, setFlowFromStore] = useState(false);
+  const [savedFlowId, setSavedFlowId] = useState<number | null>(null);
+  const appliedFlowRequestSeq = useRef<number | null>(null);
   const [flowMismatch, setFlowMismatch] = useState<string | null>(null);
   const [replaying, setReplaying] = useState(false);
   const [flowProgress, setFlowProgress] = useState({ done: 0, total: 0 });
@@ -164,6 +168,7 @@ ${collect.shape}` : null;
   useEffect(() => {
     let current = true;
     setSavedFlowsDismissed(false);
+    setSavedFlows([]);
     if (!browser.url || isLogin) {
       setSavedFlows([]);
       return () => {
@@ -185,6 +190,15 @@ ${collect.shape}` : null;
       current = false;
     };
   }, [browser.url, isLogin]);
+
+  useEffect(() => {
+    if (flowRequest === null || !browser.url) return;
+    if (appliedFlowRequestSeq.current === flowRequest.seq) return;
+    const saved = savedFlows.find((item) => item.id === flowRequest.id);
+    if (!saved) return;
+    appliedFlowRequestSeq.current = flowRequest.seq;
+    useSavedFlow(saved);
+  }, [browser.url, flowRequest, savedFlows]);
 
   useEffect(() => {
     if (!added) return;
@@ -348,6 +362,7 @@ ${collect.shape}` : null;
     setFlowNameError(null);
     setFlowSaved(false);
     setFlowFromStore(false);
+    setSavedFlowId(null);
     setFlowMismatch(null);
     setFlowResults([]);
     setFlowCapped(false);
@@ -360,6 +375,7 @@ ${collect.shape}` : null;
     setFlowNameError(null);
     setFlowSaved(true);
     setFlowFromStore(true);
+    setSavedFlowId(saved.id);
     setFlowMismatch(null);
     setFlowResults([]);
     setFlowCapped(false);
@@ -382,6 +398,7 @@ ${collect.shape}` : null;
       setFlowName(saved.name);
       setFlowSaved(true);
       setFlowFromStore(false);
+      setSavedFlowId(saved.id);
       setLocalError(null);
     } catch (error) {
       setFlowNameError(errorMessage(error));
@@ -474,6 +491,7 @@ ${collect.shape}` : null;
       setSelectedFlowResults({});
       setSavedFlowsDismissed(true);
       setFlowMismatch(null);
+      setSavedFlowId(null);
     } catch (error) {
       setLocalError(errorMessage(error));
     }
@@ -491,6 +509,7 @@ ${collect.shape}` : null;
         await enqueuePageMedia({
           items: chosen.map((item) => ({ mediaUrl: item.url, pageUrl, title: item.title })),
           preset: settings.defaultPreset,
+          method: collect.ruleId == null ? undefined : { kind: "rule", id: collect.ruleId },
         });
       } else if (collect && imagesChosen) {
         if (!browser.url) return;
@@ -502,11 +521,13 @@ ${collect.shape}` : null;
           publishedAt: page?.publishedAt ?? null,
           id: page?.id ?? null,
           images: chosen.map((item, position) => ({ url: item.url, index: item.index ?? position + 1 })),
+          method: collect.ruleId == null ? undefined : { kind: "rule", id: collect.ruleId },
         });
       } else if (chosen.length > 0) {
         await enqueue(
           chosen.map((item) => item.url),
           settings.defaultPreset,
+          collect?.ruleId == null ? undefined : { kind: "rule", id: collect.ruleId },
         );
       }
       if (flow && chosenFlow.length > 0) {
@@ -517,6 +538,7 @@ ${collect.shape}` : null;
             title: item.replayLabel,
           })),
           preset: settings.defaultPreset,
+          method: savedFlowId == null ? undefined : { kind: "flow", id: savedFlowId },
         });
       }
       setAdded(true);

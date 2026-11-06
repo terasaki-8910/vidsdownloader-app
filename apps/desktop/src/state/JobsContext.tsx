@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import type { Commands, JobRow, Preset } from "../ipc/contract";
+import type { CollectMethodRef, Commands, JobRow, Preset } from "../ipc/contract";
 import { ipc } from "../ipc";
 
 /** enqueue_page_images' arguments without the UTC offset, which this context adds. */
@@ -24,7 +24,7 @@ interface JobsContextValue {
    * before the webview started, e.g. restored from a previous run).
    */
   presetFor: (id: number) => Preset | undefined;
-  enqueue: (urls: string[], preset: Preset) => Promise<number[]>;
+  enqueue: (urls: string[], preset: Preset, method?: CollectMethodRef) => Promise<number[]>;
   /** Queues one job that saves the chosen images of a page directly; resolves to its id. */
   enqueuePageImages: (page: PageImagesRequest) => Promise<number>;
   /** Queues one direct-stream job per item and resolves to their ids. */
@@ -98,11 +98,11 @@ export function JobsProvider({ children }: { children: ReactNode }) {
     [presetByJobId],
   );
 
-  const enqueue = useCallback(async (urls: string[], preset: Preset) => {
+  const enqueue = useCallback(async (urls: string[], preset: Preset, method?: CollectMethodRef) => {
     // Computed here, once, for every caller (the URL bar and the clipboard
     // banner both go through this method).
     const tzOffsetSeconds = localTzOffsetSeconds();
-    const ids = await ipc.call("enqueue_urls", { urls, preset, tzOffsetSeconds });
+    const ids = await ipc.call("enqueue_urls", { urls, preset, tzOffsetSeconds, method });
     setPresetByJobId((prev) => {
       const next = { ...prev };
       for (const id of ids) next[id] = preset;

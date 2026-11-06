@@ -189,6 +189,7 @@ impl CollectorManager {
             .browser
             .current_page_url()
             .ok_or_else(|| "browser page is not open".to_owned())?;
+        let saved_for_page = self.saved_rule(&page_url, max_scrolls)?;
         let mut session = lock_recover(&self.session);
         let generation;
         let new_session;
@@ -209,13 +210,16 @@ impl CollectorManager {
             current.include_ads = include_ads;
             current.no_new_scans = 0;
             if shape.is_some() {
-                current.state.shape = shape;
+                current.state.shape = shape.clone();
                 current.shape_fixed = true;
+                current.state.rule_id = saved_for_page
+                    .as_ref()
+                    .filter(|saved| Some(&saved.shape) == shape.as_ref())
+                    .map(|saved| saved.id);
             }
         } else {
             new_session = true;
-            let saved = self.saved_rule(&page_url, max_scrolls)?;
-            let (saved_shape, saved_max_scrolls, rule_id) = saved
+            let (saved_shape, saved_max_scrolls, rule_id) = saved_for_page
                 .map(|saved| (Some(saved.shape), saved.max_scrolls, Some(saved.id)))
                 .unwrap_or((shape, max_scrolls, None));
             generation = 1;

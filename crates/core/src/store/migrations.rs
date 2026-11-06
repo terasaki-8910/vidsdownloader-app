@@ -126,6 +126,14 @@ const SCHEMA_V5: &str = "
     CREATE INDEX idx_flows_site_id ON flows(site_id);
 ";
 
+/// Per-method queue overrides and the time each method was last used explicitly.
+const SCHEMA_V6: &str = "
+    ALTER TABLE rules ADD COLUMN options_json TEXT NOT NULL DEFAULT '{}';
+    ALTER TABLE rules ADD COLUMN last_used_at INTEGER;
+    ALTER TABLE flows ADD COLUMN options_json TEXT NOT NULL DEFAULT '{}';
+    ALTER TABLE flows ADD COLUMN last_used_at INTEGER;
+";
+
 /// Every schema version in order, paired with the SQL that creates it from the
 /// previous one. Add a new `(version, sql)` entry here for the next migration;
 /// never change an entry that has already shipped.
@@ -135,6 +143,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (3, SCHEMA_V3),
     (4, SCHEMA_V4),
     (5, SCHEMA_V5),
+    (6, SCHEMA_V6),
 ];
 
 /// Apply any migrations this connection is missing, each inside its own
