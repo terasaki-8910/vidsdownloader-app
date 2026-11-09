@@ -691,10 +691,79 @@
     return { groups, shape: chosen, items, ads, page: pageFacts(), otherLinks: null };
   }
 
-  function step() {
-    window.scrollBy({ top: Math.max(1, window.innerHeight * 0.9), left: 0, behavior: "auto" });
+  // --- The scroll step ---------------------------------------------------------------------
+
+  // Some sites keep the window still and scroll an inner element (an app shell with
+  // `overflow: auto` on its main column), so scrolling the window finds nothing new there.
+  const MAX_SCROLLER_SEARCH = 5000;
+
+  function isScrollable(element) {
+    const overflow = getComputedStyle(element).overflowY;
+    return (
+      (overflow === "auto" || overflow === "scroll" || overflow === "overlay") &&
+      element.scrollHeight > element.clientHeight + 1
+    );
+  }
+
+  // The window itself scrolls through these elements (the body's overflow goes to the window
+  // when the root element's own overflow is visible).
+  function isRootScroller(element) {
+    if (element === document.documentElement || element === document.scrollingElement) return true;
+    return element === document.body && getComputedStyle(document.documentElement).overflowY === "visible";
+  }
+
+  // The thing that really scrolls the content: the nearest scrollable ancestor of the first
+  // card still on the page, else the window if it scrolls, else the largest scrollable element
+  // on the page, else the window. Returns an element or the window.
+  function scrollTarget() {
+    for (const card of memory.cards.values()) {
+      if (!card.isConnected) continue;
+      for (let el = card.parentElement; el && !isRootScroller(el); el = el.parentElement) {
+        if (isScrollable(el)) return el;
+      }
+      break;
+    }
     const root = document.scrollingElement || document.documentElement;
-    return { atBottom: root.scrollTop + window.innerHeight >= root.scrollHeight - 1 };
+    if (root.scrollHeight > window.innerHeight + 1) return window;
+    let best = null;
+    let bestArea = 0;
+    const all = document.querySelectorAll("*");
+    for (let i = 0; i < all.length && i < MAX_SCROLLER_SEARCH; i += 1) {
+      const el = all[i];
+      if (isRootScroller(el) || !isScrollable(el)) continue;
+      const size = el.clientWidth * el.clientHeight;
+      if (size > bestArea) {
+        best = el;
+        bestArea = size;
+      }
+    }
+    return best || window;
+  }
+
+  function measureScroll(target) {
+    const isWindow = target === window;
+    const source = isWindow ? document.scrollingElement || document.documentElement : target;
+    const top = Math.round(source.scrollTop);
+    const height = Math.round(source.scrollHeight);
+    const client = Math.round(isWindow ? window.innerHeight : target.clientHeight);
+    return { target: isWindow ? "window" : "element", top, height, client, atEnd: top + client >= height - 2 };
+  }
+
+  // Where the content scrolls now, without scrolling.
+  function scrollInfo() {
+    return measureScroll(scrollTarget());
+  }
+
+  // Scroll the scroller by 0.9 of its visible height; report where it is afterwards, and
+  // whether the position changed at all (it did not when the scroller was already at its end).
+  // "instant" overrides a page's own `scroll-behavior: smooth`, which would otherwise leave the
+  // position unchanged until later and read as "did not move".
+  function step() {
+    const target = scrollTarget();
+    const before = measureScroll(target);
+    target.scrollBy({ top: Math.max(1, before.client * 0.9), left: 0, behavior: "instant" });
+    const after = measureScroll(target);
+    return { ...after, moved: after.top !== before.top };
   }
 
   // Scroll an item's card into view and flash its outline. A card the page has dropped since
@@ -732,5 +801,5 @@
     document.getElementById(STYLE_ID)?.remove();
   }
 
-  window.__vdlCollector = { scan, step, reveal, clear, pageFacts };
+  window.__vdlCollector = { scan, step, scrollInfo, reveal, clear, pageFacts };
 })();

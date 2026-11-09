@@ -1,0 +1,6 @@
+[
+  { "query": "layout=window", "step": { "target": "window", "moved": true, "atEnd": false } },
+  { "query": "layout=smooth", "step": { "target": "window", "moved": true, "atEnd": false } },
+  { "query": "layout=inner", "step": { "target": "element", "moved": true, "atEnd": false } },
+  { "query": "layout=short", "step": { "target": "window", "moved": false, "atEnd": true } }
+]

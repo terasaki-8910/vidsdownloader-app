@@ -362,6 +362,12 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The same vertical padding as the text button beside it, so the line keeps its height in the
+   state that has no button (the item cap). */
+.progressLine > span {
+  padding: 2px 0;
+}
+
 .textButton {
   flex: none;
   padding: 2px 0;

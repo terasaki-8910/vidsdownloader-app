@@ -23,7 +23,9 @@ use vids_core::tools::{
     yt_dlp_source,
 };
 
-use crate::library_commands::finish_erasing_job_records;
+use crate::library_commands::{
+    clear_app_http_cache, finish_erasing_job_records, forget_library_rows,
+};
 use crate::media::job_file_path;
 use crate::method_options::{overrides_dest_dir, overrides_preset};
 use crate::methods::{QueueMethod, method_options, record_method_use as record_use, unix_now};
@@ -439,18 +441,78 @@ pub async fn cancel_job(id: u64, state: State<'_, AppState>) -> Result<(), Strin
         .map_err(|error| error.to_string())
 }
 
-/// Removes eligible rows from Downloads, preserving saved files and library rows.
+/// Removes eligible rows from Downloads together with the saved videos (library rows) of
+/// those jobs. The files stay where they are; the records are erased without traces, as
+/// `library_forget` does, and the Saved videos list drops them.
 #[tauri::command]
-pub async fn jobs_remove(ids: Vec<u64>, state: State<'_, AppState>) -> Result<(), String> {
-    let removed = remove_download_rows(&state.queue, &ids).await?;
-    if !removed.is_empty() {
-        let removed: Vec<i64> = removed
-            .into_iter()
-            .filter_map(|id| i64::try_from(id.0).ok())
-            .collect();
-        finish_erasing_job_records(Arc::clone(&state.store), &state.work_dir, &removed).await;
+pub async fn jobs_remove(
+    ids: Vec<u64>,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let outcome = remove_rows_and_saved_videos(&state.store, &state.queue, &ids).await?;
+    if outcome.erased_job_ids.is_empty() {
+        return Ok(());
+    }
+    finish_erasing_job_records(
+        Arc::clone(&state.store),
+        &state.work_dir,
+        &outcome.erased_job_ids,
+    )
+    .await;
+    if outcome.forgotten_rows > 0 {
+        clear_app_http_cache(&app).await;
+        let _ = app.emit("library-updated", ());
     }
     Ok(())
+}
+
+/// What [`remove_rows_and_saved_videos`] erased.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct RemovedRows {
+    /// The Downloads rows removed.
+    removed: Vec<JobId>,
+    /// How many saved-video (library) rows were forgotten with them.
+    forgotten_rows: usize,
+    /// Every job erased from the store (the removed rows and those erased with a saved
+    /// video), for `finish_erasing_job_records`.
+    erased_job_ids: Vec<i64>,
+}
+
+/// Removes the eligible Downloads rows among `ids`, then forgets the saved videos whose job
+/// was one of them (a job that saved several files has one row per file). The library rows
+/// are looked up first: deleting a job clears its rows' `job_id`. A saved video that cannot
+/// be forgotten now, because another job tied to it is still running, stays in the list.
+async fn remove_rows_and_saved_videos<E: JobExecutor>(
+    store: &Arc<Mutex<Store>>,
+    queue: &Queue<E>,
+    ids: &[u64],
+) -> Result<RemovedRows, String> {
+    let requested: Vec<i64> = ids
+        .iter()
+        .filter_map(|id| i64::try_from(*id).ok())
+        .collect();
+    let saved = lock_recover(store)
+        .library_ids_for_jobs(&requested)
+        .map_err(|error| error.to_string())?;
+
+    let removed = remove_download_rows(queue, ids).await?;
+    let mut erased_job_ids: Vec<i64> = removed
+        .iter()
+        .filter_map(|id| i64::try_from(id.0).ok())
+        .collect();
+    let library_ids: Vec<i64> = saved
+        .into_iter()
+        .filter(|(job_id, _)| erased_job_ids.contains(job_id))
+        .map(|(_, library_id)| library_id)
+        .collect();
+    let forgotten = forget_library_rows(store, queue, &library_ids);
+    erased_job_ids.extend(forgotten.job_ids);
+    Ok(RemovedRows {
+        removed,
+        forgotten_rows: forgotten.rows,
+        erased_job_ids,
+    })
 }
 
 async fn remove_download_rows<E: JobExecutor>(
@@ -1382,7 +1444,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn jobs_remove_keeps_library_and_running_rows_but_erases_the_other_queue_rows() {
+    async fn jobs_remove_forgets_the_saved_videos_of_removed_rows_but_keeps_running_rows() {
         let temp = tempfile::tempdir().unwrap();
         let db = temp.path().join("queue.db");
         let work = temp.path().join("work");
@@ -1447,23 +1509,52 @@ mod tests {
             Some(library_id)
         );
 
+        let running_file = temp.path().join("running.mp4");
+        fs::write(&running_file, b"running").unwrap();
+        let running_library_id = lock_recover(&store)
+            .add_library_item(
+                NewLibraryItem {
+                    job_id: Some(downloading.0 as i64),
+                    ..saved_item(&running_file, "running")
+                },
+                11,
+            )
+            .unwrap();
+
         for id in [done, queued, downloading] {
             let folder = work.join(format!("job-{}-1", id.0));
             fs::create_dir(&folder).unwrap();
             fs::write(folder.join("info.json"), b"{}").unwrap();
         }
 
-        let removed = remove_download_rows(&queue, &[done.0, queued.0, downloading.0, 999, done.0])
-            .await
-            .unwrap();
-        assert_eq!(removed, [done, queued]);
+        let outcome = remove_rows_and_saved_videos(
+            &store,
+            &queue,
+            &[done.0, queued.0, downloading.0, 999, done.0],
+        )
+        .await
+        .unwrap();
+        assert_eq!(outcome.removed, [done, queued]);
+        assert_eq!(outcome.forgotten_rows, 1);
         assert!(queued_run.cancel.is_cancelled());
-        let erased_ids: Vec<i64> = removed.iter().map(|id| id.0 as i64).collect();
-        assert!(finish_erasing_job_records(Arc::clone(&store), &work, &erased_ids).await);
+        assert!(
+            finish_erasing_job_records(Arc::clone(&store), &work, &outcome.erased_job_ids).await
+        );
 
-        let item = lock_recover(&store).get_library_item(library_id).unwrap();
-        assert_eq!(item.job_id, None, "the foreign key uses ON DELETE SET NULL");
+        assert!(
+            lock_recover(&store).get_library_item(library_id).is_err(),
+            "the removed job's saved video is forgotten"
+        );
+        let running_item = lock_recover(&store)
+            .get_library_item(running_library_id)
+            .unwrap();
+        assert_eq!(
+            running_item.job_id,
+            Some(downloading.0 as i64),
+            "the running job and its saved video stay"
+        );
         assert!(saved_file.is_file(), "the saved file stays");
+        assert!(running_file.is_file());
         assert!(lock_recover(&store).get_job(done.0 as i64).is_err());
         assert!(lock_recover(&store).get_job(queued.0 as i64).is_err());
         assert_eq!(
@@ -1510,6 +1601,182 @@ mod tests {
             .map(|job| job.id)
             .collect();
         assert_eq!(ids, [downloading.0 as i64]);
-        assert_eq!(reopened.get_library_item(library_id).unwrap().job_id, None);
+        assert!(reopened.get_library_item(library_id).is_err());
+        assert_eq!(
+            reopened
+                .get_library_item(running_library_id)
+                .unwrap()
+                .job_id,
+            Some(downloading.0 as i64)
+        );
+    }
+
+    fn saved_item(path: &std::path::Path, video_id: &str) -> NewLibraryItem {
+        NewLibraryItem {
+            job_id: None,
+            site: Some("Example".to_owned()),
+            video_id: Some(video_id.to_owned()),
+            url: Some(format!("https://example.test/{video_id}")),
+            title: Some(video_id.to_owned()),
+            uploader: None,
+            published_at: None,
+            duration_s: None,
+            path: path.to_string_lossy().into_owned(),
+            comments_path: None,
+            size_bytes: Some(1),
+        }
+    }
+
+    /// Runs one job to `Done` and returns its id.
+    async fn finish_job(
+        queue: &Queue<RemovalFake>,
+        runs: &mut mpsc::UnboundedReceiver<RemovalRun>,
+        events: &mut broadcast::Receiver<QueueEvent>,
+        url: &str,
+    ) -> JobId {
+        let id = queue.enqueue(url, json!({}));
+        let run = next_removal_run(runs).await;
+        assert_eq!(run.id, id);
+        run.finish(Ok(JobOutcome::default()));
+        wait_finished(events, id).await;
+        id
+    }
+
+    #[tokio::test]
+    async fn jobs_remove_forgets_every_saved_video_of_a_job_that_saved_several_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let work = temp.path().join("work");
+        fs::create_dir(&work).unwrap();
+        let store = Arc::new(Mutex::new(
+            Store::open(temp.path().join("queue.db")).unwrap(),
+        ));
+        let (executor, mut runs) = removal_fake();
+        let queue = Queue::with_store(executor, 2, Arc::clone(&store));
+        let mut events = queue.subscribe();
+
+        // A gallery: one job, one saved video per image.
+        let gallery = finish_job(
+            &queue,
+            &mut runs,
+            &mut events,
+            "https://example.test/gallery",
+        )
+        .await;
+        let other = finish_job(&queue, &mut runs, &mut events, "https://example.test/other").await;
+        let mut gallery_rows = Vec::new();
+        for name in ["one.jpg", "two.jpg", "three.jpg"] {
+            let file = temp.path().join(name);
+            fs::write(&file, name).unwrap();
+            let id = lock_recover(&store)
+                .add_library_item(
+                    NewLibraryItem {
+                        job_id: Some(gallery.0 as i64),
+                        url: Some("https://example.test/gallery".to_owned()),
+                        ..saved_item(&file, name)
+                    },
+                    10,
+                )
+                .unwrap();
+            gallery_rows.push((id, file));
+        }
+        let other_file = temp.path().join("other.mp4");
+        fs::write(&other_file, b"other").unwrap();
+        let other_row = lock_recover(&store)
+            .add_library_item(
+                NewLibraryItem {
+                    job_id: Some(other.0 as i64),
+                    ..saved_item(&other_file, "other")
+                },
+                10,
+            )
+            .unwrap();
+
+        let outcome = remove_rows_and_saved_videos(&store, &queue, &[gallery.0])
+            .await
+            .unwrap();
+        assert_eq!(outcome.removed, [gallery]);
+        assert_eq!(outcome.forgotten_rows, 3);
+        assert!(
+            finish_erasing_job_records(Arc::clone(&store), &work, &outcome.erased_job_ids).await
+        );
+
+        for (id, file) in &gallery_rows {
+            assert!(
+                lock_recover(&store).get_library_item(*id).is_err(),
+                "library row {id} is forgotten"
+            );
+            assert!(file.is_file(), "{} stays on disk", file.display());
+        }
+        assert_eq!(
+            lock_recover(&store)
+                .get_library_item(other_row)
+                .unwrap()
+                .job_id,
+            Some(other.0 as i64),
+            "another job's saved video is not touched"
+        );
+        assert_eq!(
+            queue
+                .snapshot()
+                .iter()
+                .map(|row| row.id)
+                .collect::<Vec<_>>(),
+            [other]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_saved_video_stays_when_another_job_tied_to_it_is_still_running() {
+        let temp = tempfile::tempdir().unwrap();
+        let work = temp.path().join("work");
+        fs::create_dir(&work).unwrap();
+        let store = Arc::new(Mutex::new(
+            Store::open(temp.path().join("queue.db")).unwrap(),
+        ));
+        let (executor, mut runs) = removal_fake();
+        let queue = Queue::with_store(executor, 2, Arc::clone(&store));
+        let mut events = queue.subscribe();
+
+        let url = "https://example.test/watch";
+        let first = finish_job(&queue, &mut runs, &mut events, url).await;
+        let file = temp.path().join("watch.mp4");
+        fs::write(&file, b"watch").unwrap();
+        let row = lock_recover(&store)
+            .add_library_item(
+                NewLibraryItem {
+                    job_id: Some(first.0 as i64),
+                    url: Some(url.to_owned()),
+                    ..saved_item(&file, "watch")
+                },
+                10,
+            )
+            .unwrap();
+        // The same URL downloaded again and still running: the saved video cannot be erased
+        // now, because that would delete the running job's row.
+        let again = queue.enqueue(url, json!({}));
+        let again_run = next_removal_run(&mut runs).await;
+        assert_eq!(again_run.id, again);
+        again_run.sink.set_state(JobState::Downloading).unwrap();
+
+        let outcome = remove_rows_and_saved_videos(&store, &queue, &[first.0])
+            .await
+            .expect("the removal itself does not fail");
+        assert_eq!(outcome.removed, [first]);
+        assert_eq!(outcome.forgotten_rows, 0);
+        assert!(
+            finish_erasing_job_records(Arc::clone(&store), &work, &outcome.erased_job_ids).await
+        );
+
+        assert!(lock_recover(&store).get_job(first.0 as i64).is_err());
+        assert!(
+            lock_recover(&store).get_library_item(row).is_ok(),
+            "the saved video stays"
+        );
+        assert_eq!(
+            lock_recover(&store).get_job(again.0 as i64).unwrap().state,
+            JobState::Downloading
+        );
+        assert!(file.is_file());
+        again_run.finish(Ok(JobOutcome::default()));
     }
 }

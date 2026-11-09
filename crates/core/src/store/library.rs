@@ -1,7 +1,7 @@
 //! The library: records of saved files, searchable and independent of the job that
 //! created them.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use rusqlite::{Connection, OptionalExtension, Row, ToSql, params, params_from_iter};
 
@@ -211,6 +211,25 @@ impl Store {
             )
             .optional()
             .map_err(StoreError::from)
+    }
+
+    /// Every library row linked to one of `job_ids`, as `(job_id, library_id)` pairs in
+    /// ascending library order. A job has several rows when it saved several files
+    /// (page images, a gallery).
+    pub fn library_ids_for_jobs(&self, job_ids: &[i64]) -> Result<Vec<(i64, i64)>, StoreError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT job_id, id FROM library_items WHERE job_id IS NOT NULL ORDER BY id")?;
+        let rows = stmt.query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))?;
+        let wanted: HashSet<i64> = job_ids.iter().copied().collect();
+        let mut pairs = Vec::new();
+        for row in rows {
+            let (job_id, library_id) = row?;
+            if wanted.contains(&job_id) {
+                pairs.push((job_id, library_id));
+            }
+        }
+        Ok(pairs)
     }
 
     /// Add a file to the library.
@@ -487,6 +506,57 @@ mod tests {
         assert!(!store.has_library_item("Youtube", "same").unwrap());
         assert!(store.has_library_item("Youtube", "present").unwrap());
         assert!(!store.has_library_item("Niconico", "present").unwrap());
+    }
+
+    #[test]
+    fn library_ids_for_jobs_lists_every_row_of_the_given_jobs_only() {
+        let store = Store::open_in_memory().unwrap();
+        let empty_job = job(&store, "empty");
+        let one_job = job(&store, "one");
+        let two_job = job(&store, "two");
+        let one = store
+            .add_library_item(
+                NewLibraryItem {
+                    job_id: Some(one_job),
+                    ..item("/one.mp4", "Example", "one")
+                },
+                10,
+            )
+            .unwrap();
+        let first = store
+            .add_library_item(
+                NewLibraryItem {
+                    job_id: Some(two_job),
+                    ..item("/two-a.jpg", "Example", "a")
+                },
+                10,
+            )
+            .unwrap();
+        let second = store
+            .add_library_item(
+                NewLibraryItem {
+                    job_id: Some(two_job),
+                    ..item("/two-b.jpg", "Example", "b")
+                },
+                10,
+            )
+            .unwrap();
+        store
+            .add_library_item(item("/unlinked.mp4", "Example", "unlinked"), 10)
+            .unwrap();
+
+        assert_eq!(
+            store
+                .library_ids_for_jobs(&[empty_job, one_job, two_job])
+                .unwrap(),
+            [(one_job, one), (two_job, first), (two_job, second)]
+        );
+        assert_eq!(
+            store.library_ids_for_jobs(&[two_job]).unwrap(),
+            [(two_job, first), (two_job, second)]
+        );
+        assert!(store.library_ids_for_jobs(&[empty_job]).unwrap().is_empty());
+        assert!(store.library_ids_for_jobs(&[]).unwrap().is_empty());
     }
 
     #[test]

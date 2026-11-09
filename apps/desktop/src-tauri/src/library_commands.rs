@@ -11,15 +11,15 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 #[cfg(windows)]
 use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 use vids_core::item_files;
-use vids_core::queue::JobId;
-use vids_core::store::LibraryItem;
+use vids_core::queue::{JobExecutor, JobId, Queue};
+use vids_core::store::{LibraryItem, Store};
 
 use crate::models::{EraseResult, LibraryRow};
 use crate::state::{AppState, TARGET_OS, lock_recover};
@@ -180,10 +180,7 @@ fn library_item(state: &AppState, id: i64) -> Result<LibraryItem, String> {
         .map_err(|error| error.to_string())
 }
 
-fn library_file(
-    store: &std::sync::Mutex<vids_core::store::Store>,
-    id: i64,
-) -> Result<PathBuf, String> {
+fn library_file(store: &Mutex<Store>, id: i64) -> Result<PathBuf, String> {
     let item = lock_recover(store)
         .get_library_item(id)
         .map_err(|error| error.to_string())?;
@@ -220,10 +217,18 @@ fn side_files_of(state: &AppState, item: &LibraryItem) -> Result<Vec<PathBuf>, S
 /// Refuses, before anything is touched, when a job that erasing the item would delete has
 /// not finished, in the store or in the queue.
 fn ensure_erasable(state: &AppState, id: i64) -> Result<(), String> {
-    let job_ids = lock_recover(&state.store)
+    ensure_erasable_in(&state.store, &state.queue, id)
+}
+
+fn ensure_erasable_in<E: JobExecutor>(
+    store: &Mutex<Store>,
+    queue: &Queue<E>,
+    id: i64,
+) -> Result<(), String> {
+    let job_ids = lock_recover(store)
         .library_item_jobs_to_erase(id)
         .map_err(|error| error.to_string())?;
-    if let Some(job) = state.queue.snapshot().into_iter().find(|job| {
+    if let Some(job) = queue.snapshot().into_iter().find(|job| {
         i64::try_from(job.id.0).is_ok_and(|job_id| job_ids.contains(&job_id))
             && !job.state.is_terminal()
     }) {
@@ -235,6 +240,64 @@ fn ensure_erasable(state: &AppState, id: i64) -> Result<(), String> {
     Ok(())
 }
 
+/// Erases the item's records (library row and jobs) and drops the jobs from the queue;
+/// returns the erased jobs' ids. The caller finishes with [`finish_erasing_job_records`].
+fn erase_item_records<E: JobExecutor>(
+    store: &Mutex<Store>,
+    queue: &Queue<E>,
+    id: i64,
+) -> Result<Vec<i64>, String> {
+    let erased = lock_recover(store)
+        .erase_library_item(id)
+        .map_err(|error| error.to_string())?;
+    let job_ids: Vec<JobId> = erased
+        .job_ids
+        .iter()
+        .filter_map(|job| u64::try_from(*job).ok().map(JobId))
+        .collect();
+    if let Err(error) = queue.forget(&job_ids) {
+        // Only possible when a job was retried between the check and the erase; its row
+        // is already gone from the store, so it does not come back after a restart.
+        eprintln!("could not remove erased jobs from the queue: {error}");
+    }
+    Ok(erased.job_ids)
+}
+
+/// What [`forget_library_rows`] erased.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct ForgottenRows {
+    /// How many library rows were erased.
+    pub rows: usize,
+    /// The jobs erased along with them, for [`finish_erasing_job_records`].
+    pub job_ids: Vec<i64>,
+}
+
+/// Forgets library rows the way [`library_forget`] does, except that the database is not
+/// compacted nor the app cache cleared here (the caller does both once for the whole
+/// batch). A row that cannot be erased now, for instance because a job tied to it is
+/// still running, is left in place without a word: the caller is doing something else
+/// (removing Downloads rows) and the rest must go on.
+pub(crate) fn forget_library_rows<E: JobExecutor>(
+    store: &Mutex<Store>,
+    queue: &Queue<E>,
+    ids: &[i64],
+) -> ForgottenRows {
+    let mut forgotten = ForgottenRows::default();
+    for &id in ids {
+        if ensure_erasable_in(store, queue, id).is_err() {
+            continue;
+        }
+        match erase_item_records(store, queue, id) {
+            Ok(job_ids) => {
+                forgotten.rows += 1;
+                forgotten.job_ids.extend(job_ids);
+            }
+            Err(error) => eprintln!("could not forget saved video {id}: {error}"),
+        }
+    }
+    forgotten
+}
+
 /// Erases the item's records (library row and jobs), drops the jobs from the queue,
 /// compacts and checkpoints the database, deletes the jobs' leftover work folders and clears the app
 /// UI's HTTP cache. Emits `library-updated`.
@@ -244,23 +307,9 @@ async fn erase_records(
     id: i64,
     side_files_failed: Vec<String>,
 ) -> Result<EraseResult, String> {
-    let erased = lock_recover(&state.store)
-        .erase_library_item(id)
-        .map_err(|error| error.to_string())?;
-    let job_ids: Vec<JobId> = erased
-        .job_ids
-        .iter()
-        .filter_map(|job| u64::try_from(*job).ok().map(JobId))
-        .collect();
-    if let Err(error) = state.queue.forget(&job_ids) {
-        // Only possible when a job was retried between the check and the erase; its row
-        // is already gone from the store, so it does not come back after a restart.
-        eprintln!("could not remove erased jobs from the queue: {error}");
-    }
-
+    let erased_jobs = erase_item_records(&state.store, &state.queue, id)?;
     let checkpointed =
-        finish_erasing_job_records(Arc::clone(&state.store), &state.work_dir, &erased.job_ids)
-            .await;
+        finish_erasing_job_records(Arc::clone(&state.store), &state.work_dir, &erased_jobs).await;
     let cache_cleared = clear_app_http_cache(app).await;
     let _ = app.emit("library-updated", ());
     Ok(EraseResult {
@@ -274,7 +323,7 @@ async fn erase_records(
 /// checkpoint and truncate the WAL, then remove leftover attempt folders. Both library
 /// erasure and Downloads-only removal use this exact path.
 pub(crate) async fn finish_erasing_job_records(
-    store: Arc<std::sync::Mutex<vids_core::store::Store>>,
+    store: Arc<Mutex<Store>>,
     work_dir: &Path,
     job_ids: &[i64],
 ) -> bool {
@@ -456,9 +505,7 @@ async fn open_with(app: &AppHandle, window: &tauri::Window, path: PathBuf) -> Re
 /// and the library). The in-app browser's account webviews use other data folders and
 /// keep theirs. Waits up to 5 seconds; returns whether WebView2 reported success.
 #[cfg(windows)]
-async fn clear_app_http_cache(app: &AppHandle) -> bool {
-    use std::sync::Mutex;
-
+pub(crate) async fn clear_app_http_cache(app: &AppHandle) -> bool {
     use webview2_com::ClearBrowsingDataCompletedHandler;
     use webview2_com::Microsoft::Web::WebView2::Win32::{
         COREWEBVIEW2_BROWSING_DATA_KINDS_DISK_CACHE, ICoreWebView2_13, ICoreWebView2Profile2,
@@ -521,14 +568,14 @@ async fn clear_app_http_cache(app: &AppHandle) -> bool {
 /// macOS: not done yet (WKWebView's `WKWebsiteDataStore` would need native code), so the
 /// result tells the UI the cache was not cleared.
 #[cfg(not(windows))]
-async fn clear_app_http_cache(_app: &AppHandle) -> bool {
+pub(crate) async fn clear_app_http_cache(_app: &AppHandle) -> bool {
     false
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vids_core::store::{NewLibraryItem, Store};
+    use vids_core::store::NewLibraryItem;
 
     fn library_item_at(path: &Path) -> NewLibraryItem {
         NewLibraryItem {
@@ -548,7 +595,7 @@ mod tests {
 
     #[test]
     fn library_file_errors_for_unknown_and_missing_items() {
-        let store = std::sync::Mutex::new(Store::open_in_memory().unwrap());
+        let store = Mutex::new(Store::open_in_memory().unwrap());
         let unknown = library_file(&store, 999).unwrap_err();
         assert!(unknown.contains("library item 999"));
 

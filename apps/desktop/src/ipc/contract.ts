@@ -340,10 +340,17 @@ export interface CollectPage {
   id: string | null;
 }
 
+/** Why a collect run is not running: the page's end was reached, it was stopped (by the user, a page change or an error), or the session holds the most items it keeps. */
+export type CollectStopReason = "end" | "stopped" | "cap";
+
 export interface CollectState {
   running: boolean;
+  /** Scroll steps made so far. Informational: nothing stops on it any more. */
   scrolls: number;
+  /** Kept for the saved rule's stop.maxPages; the collect loop does not stop on it any more. */
   maxScrolls: number;
+  /** Why the run is over; null while it runs and before the first run. */
+  stopReason: CollectStopReason | null;
   groups: CollectGroup[];
   shape: string | null;
   items: CollectItem[];
@@ -536,9 +543,13 @@ export interface Commands {
    */
   library_forget: { args: { id: number }; result: EraseResult };
   /**
-   * Removes eligible rows from Downloads only; saved files and library rows stay. Waiting
-   * rows are canceled first. Probing/downloading/post-processing rows are left in place.
-   * Emits "job-removed" once per row that is removed.
+   * Removes eligible rows from Downloads and forgets the saved videos (library rows, one per
+   * file for a job that saved several) of the removed jobs, erasing their records without
+   * traces as library_forget does; the files stay and no confirmation is asked. A saved
+   * video another unfinished job is tied to stays. Waiting rows are canceled first.
+   * Probing/downloading/post-processing rows are left in place (with their saved videos).
+   * Emits "job-removed" once per row that is removed and "library-updated" when saved
+   * videos were forgotten.
    */
   jobs_remove: { args: { ids: number[] }; result: null };
   /** Shows the file in the OS file manager. */

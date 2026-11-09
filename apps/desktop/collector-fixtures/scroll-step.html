@@ -1,0 +1,38 @@
+<!doctype html>
+<!-- The collector's scroll step on four layouts, chosen with ?layout=:
+       window  the document scrolls
+       smooth  the document scrolls and the page asks for smooth scrolling (CSS scroll-behavior)
+       inner   the window keeps still and an inner column scrolls (an app shell)
+       short   everything fits: nothing scrolls -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Scroll step</title>
+<style>
+  body { margin: 0; font: 16px sans-serif; }
+  article { height: 200px; padding: 16px; box-sizing: border-box; border-bottom: 1px solid #ccc; }
+  article a { display: block; padding: 8px 0; }
+</style>
+</head>
+<body>
+<main id="list"></main>
+<script>
+  const layout = new URLSearchParams(location.search).get("layout") || "window";
+  const count = layout === "short" ? 3 : 40;
+  const list = document.getElementById("list");
+  for (let i = 1; i <= count; i += 1) {
+    const article = document.createElement("article");
+    article.innerHTML = `<a href="/watch/${i}">Item number ${i}</a>`;
+    list.appendChild(article);
+  }
+  if (layout === "smooth") document.documentElement.style.scrollBehavior = "smooth";
+  if (layout === "inner") {
+    document.documentElement.style.cssText = "height: 100%; overflow: hidden;";
+    document.body.style.cssText = "height: 100%; overflow: hidden;";
+    list.style.cssText = "height: 100%; overflow: auto; scroll-behavior: smooth;";
+  }
+</script>
+<script src="/collector.js"></script>
+<script src="/run-step.js"></script>
+</body>
+</html>

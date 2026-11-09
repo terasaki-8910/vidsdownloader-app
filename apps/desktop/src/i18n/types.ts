@@ -425,10 +425,20 @@ export interface Translations {
     foundLabel: string;
     all: string;
     selectedOfTotal: (selected: number, total: number) => string;
-    scrollProgress: (scrolls: number, maxScrolls: number) => string;
+    /** The tray's line while the page is being scrolled, with the number of items found so far. */
+    scrollRunning: (count: number) => string;
+    /** The line once the end of the page was reached. */
+    scrollEnd: (count: number) => string;
+    /** The line after the user (or a page change) stopped the run. */
+    scrollStopped: (count: number) => string;
+    /** The line once the most items a session keeps were found; it has no button. */
+    scrollCap: string;
     adsExcluded: (count: number) => string;
     collectStop: string;
-    collectResume: string;
+    /** The button after the end of the page was reached: scroll the page again. */
+    collectAgain: string;
+    /** The button after a stop: go on from where it stopped. */
+    collectContinue: string;
     groupOption: (shape: string, count: number) => string;
     /** The group of the page's own images: the group select's option and the grid's heading. */
     imagesGroup: (count: number) => string;

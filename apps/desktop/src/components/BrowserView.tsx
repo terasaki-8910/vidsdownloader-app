@@ -18,6 +18,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEve
 import type { CollectState, Flow, FlowReplayItem, FlowScope, SavedFlow } from "../ipc/contract";
 import { ipc, usesMockIpc } from "../ipc";
 import { useT } from "../i18n/I18nContext";
+import type { Translations } from "../i18n/types";
 import { IMAGES_SHAPE, PLAYED_SHAPE } from "../lib/collect";
 import { readDebugHash } from "../lib/debugHash";
 import { nextFrame } from "../lib/frame";
@@ -117,6 +118,7 @@ export function BrowserView({ onOpenSites }: BrowserViewProps) {
   const allSelected = selectableCount > 0 && selectedCount === selectableCount;
   const trayOpen = collect !== null || flow !== null || (savedFlows.length > 0 && !savedFlowsDismissed);
   const trayItemCount = (collect?.items.length ?? 0) + flowResults.length;
+  const scrollAction = collect ? scrollButton(collect, t.browser) : null;
   // The page's own images are saved directly (one job for the page), not queued as links.
   const imagesChosen = collect?.shape === IMAGES_SHAPE;
   const playedChosen = collect?.shape === PLAYED_SHAPE;
@@ -252,7 +254,7 @@ ${collect.shape}` : null;
   // receives it so screenshot URLs need no scripted click.
   useEffect(() => {
     const debug = readDebugHash();
-    if (!usesMockIpc || !debug.mockCollect || debugCollectApplied.current || !browser.url || browser.loading) return;
+    if (!usesMockIpc || !(debug.mockCollect || debug.mockScroll) || debugCollectApplied.current || !browser.url || browser.loading) return;
     debugCollectApplied.current = true;
     void startCollectRef.current();
   }, [browser.loading, browser.url]);
@@ -765,10 +767,12 @@ ${collect.shape}` : null;
                 </IconButton>
               </div>
               {collect && <div className={styles.progressLine}>
-                <span>{t.browser.scrollProgress(collect.scrolls, collect.maxScrolls)}</span>
-                <button type="button" className={styles.textButton} onClick={() => void toggleCollect()}>
-                  {collect.running ? t.browser.collectStop : t.browser.collectResume}
-                </button>
+                <span>{scrollLine(collect, t.browser)}</span>
+                {scrollAction && (
+                  <button type="button" className={styles.textButton} onClick={() => void toggleCollect()}>
+                    {scrollAction}
+                  </button>
+                )}
               </div>}
               {collect && collect.groups.length > 0 && collect.shape && (
                 <select
@@ -1070,6 +1074,23 @@ ${collect.shape}` : null;
       </div>
     </section>
   );
+}
+
+/** The tray's status line for the auto-scroll: what it is doing, or why it is not, and how many items it found. */
+function scrollLine(collect: CollectState, text: Translations["browser"]): string {
+  const count = collect.items.length;
+  if (collect.running) return text.scrollRunning(count);
+  if (collect.stopReason === "end") return text.scrollEnd(count);
+  if (collect.stopReason === "cap") return text.scrollCap;
+  return text.scrollStopped(count);
+}
+
+/** The button beside that line; none once the most items a session keeps were collected. */
+function scrollButton(collect: CollectState, text: Translations["browser"]): string | null {
+  if (collect.running) return text.collectStop;
+  if (collect.stopReason === "end") return text.collectAgain;
+  if (collect.stopReason === "cap") return null;
+  return text.collectContinue;
 }
 
 function playedMeta(url: string, kind: string, durationSeconds: number | null): string {

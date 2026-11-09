@@ -625,6 +625,7 @@ async function runPageImagesJob(id: number, args: Commands["enqueue_page_images"
     addedAt: nowSeconds(),
   }));
   library.unshift(...rows);
+  libraryIdsByJob.set(id, rows.map((row) => row.id));
   emit("library-updated", null);
   update(id, { state: "Done", progress: 1, outputPath: paths[0] ?? null, skipped: null, libraryId: rows[0]?.id ?? null });
 }
@@ -1259,6 +1260,28 @@ function mockOtherLinks(found: MockCollectPage, shape: string): CollectLinks | n
 let collectState: CollectState | null = null;
 let collectTimer: ReturnType<typeof setTimeout> | null = null;
 let nextRuleId = 4;
+/** The mock scrolls for about 2 s (this many ticks) and then reports the end of the page. */
+const MOCK_SCROLL_TICKS = 3;
+const MOCK_SCROLL_TICK_MS = 700;
+/** The most items a collect session keeps (the Rust side's MAX_SCAN_ITEMS). */
+const MOCK_COLLECT_CAP = 2000;
+let collectTicks = 0;
+/** #mockScroll puts only the first collect_start into its state; buttons act normally after that. */
+let mockScrollApplied = false;
+
+/** `items` followed by made-up videos up to `total`, so a capped session holds what it says. */
+function padCollectItems(items: CollectItem[], total: number): CollectItem[] {
+  const padded = items.slice();
+  for (let index = padded.length; index < total; index += 1) {
+    padded.push({
+      url: `https://www.youtube.com/watch?v=mock${String(index).padStart(7, "0")}`,
+      title: `Sample video ${index + 1}`,
+      thumbnail: null,
+      index: null,
+    });
+  }
+  return padded;
+}
 
 function emitCollect(): void {
   if (collectState) emit("collect-state", structuredClone(collectState));
@@ -1275,10 +1298,14 @@ function scheduleCollectTick(): void {
   collectTimer = setTimeout(() => {
     if (!collectState?.running) return;
     collectState.scrolls += 1;
-    if (collectState.scrolls >= Math.min(collectState.maxScrolls, 2)) collectState.running = false;
+    collectTicks += 1;
+    if (collectTicks >= MOCK_SCROLL_TICKS) {
+      collectState.running = false;
+      collectState.stopReason = "end";
+    }
     emitCollect();
     scheduleCollectTick();
-  }, 700);
+  }, MOCK_SCROLL_TICK_MS);
 }
 
 function siteById(siteId: number): Site {
@@ -1380,7 +1407,7 @@ function parseHttpUrl(url: string): URL {
       siteId: null,
       accountId: null,
     };
-  } else if (hash.mockCollect) {
+  } else if (hash.mockCollect || hash.mockScroll) {
     const url = hash.mockCollect === "images"
       ? IMAGES_PAGE_URL
       : hash.mockCollect === "played"
@@ -1717,6 +1744,26 @@ function libraryRow(id: number): LibraryRow {
   return row;
 }
 
+/**
+ * Every library row a job saved. A job saving several files (page images) has one row per
+ * file, as in the real library; JobRow.libraryId names only the first.
+ */
+const libraryIdsByJob = new Map<number, number[]>();
+
+/** The jobs that point at a library row (the real store also matches by URL and skipped paths). */
+function jobsTiedTo(row: LibraryRow): JobRow[] {
+  return [...jobs.values()].filter((job) => job.libraryId === row.id || job.outputPath === row.path);
+}
+
+/** Drops a library row and the jobs tied to it, as the real erase does; the file is not touched. */
+function eraseLibraryRow(row: LibraryRow, tied: JobRow[]): void {
+  library.splice(library.indexOf(row), 1);
+  for (const job of tied) {
+    jobs.delete(job.id);
+    emit("job-removed", { id: job.id });
+  }
+}
+
 // ---------------------------------------------------------------------------
 // IpcClient implementation
 // ---------------------------------------------------------------------------
@@ -2002,16 +2049,12 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
     case "library_forget": {
       const { id } = args as Commands["library_trash"]["args"];
       const row = libraryRow(id);
-      const tied = [...jobs.values()].filter((job) => job.libraryId === row.id || job.outputPath === row.path);
+      const tied = jobsTiedTo(row);
       const running = tied.find((job) => ACTIVE_STATES.includes(job.state));
       if (running) {
         throw new Error(`job ${running.id} has not finished (${running.state}); cancel it or wait until it ends`);
       }
-      library.splice(library.indexOf(row), 1);
-      for (const job of tied) {
-        jobs.delete(job.id);
-        emit("job-removed", { id: job.id });
-      }
+      eraseLibraryRow(row, tied);
       emit("library-updated", null);
       // #mockErase=sideFiles / traces: results that are not clean, for the notice line.
       const unclean = readDebugHash().mockErase;
@@ -2028,15 +2071,31 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
 
     case "jobs_remove": {
       const { ids } = args as Commands["jobs_remove"]["args"];
+      // The saved videos of the removed jobs go too (files stay), like the real command.
+      const savedIds = new Set<number>();
       for (const id of ids) {
         const job = jobs.get(id);
         if (!job || ["Downloading", "Probing", "PostProcessing"].includes(job.state)) continue;
         if (job.state === "Queued" || job.state === "Ready") {
           update(id, { state: "Canceled", phase: null, progress: null, speedBytesPerS: null, etaS: null });
         }
+        for (const libraryId of libraryIdsByJob.get(id) ?? (job.libraryId != null ? [job.libraryId] : [])) {
+          savedIds.add(libraryId);
+        }
         jobs.delete(id);
         emit("job-removed", { id });
       }
+      let forgotten = false;
+      for (const libraryId of savedIds) {
+        const row = library.find((r) => r.id === libraryId);
+        if (!row) continue;
+        const tied = jobsTiedTo(row);
+        // A saved video another running job is tied to stays, without an error.
+        if (tied.some((job) => ACTIVE_STATES.includes(job.state))) continue;
+        eraseLibraryRow(row, tied);
+        forgotten = true;
+      }
+      if (forgotten) emit("library-updated", null);
       maybeStartNext();
       return null;
     }
@@ -2217,6 +2276,7 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
       });
       if (collectState?.running) {
         collectState.running = false;
+        collectState.stopReason = "stopped";
         emitCollect();
         stopCollectTimer();
       }
@@ -2269,10 +2329,12 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
           item.shape === selectedShape &&
           browserState.url?.startsWith(item.pageUrl),
       );
+      collectTicks = 0;
       collectState = {
         running: true,
         scrolls: collectState?.scrolls ?? 0,
         maxScrolls,
+        stopReason: null,
         groups: found.groups.map((group) => ({ ...group })),
         shape: selectedShape,
         items: found.itemsFor(selectedShape),
@@ -2282,6 +2344,16 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
         page: { ...found.page },
         otherLinks: mockOtherLinks(found, selectedShape),
       };
+      const scrollState = readDebugHash().mockScroll;
+      if (scrollState && !mockScrollApplied) {
+        mockScrollApplied = true;
+        collectState.running = scrollState === "running";
+        collectState.stopReason = scrollState === "running" ? null : scrollState;
+        if (scrollState === "cap") collectState.items = padCollectItems(collectState.items, MOCK_COLLECT_CAP);
+        emitCollect();
+        // "running" is left running so a screenshot of it stays put.
+        return null;
+      }
       emitCollect();
       scheduleCollectTick();
       return null;
@@ -2289,7 +2361,10 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
 
     case "collect_stop":
       if (!collectState) throw new Error("no collect session is open");
-      collectState.running = false;
+      if (collectState.running) {
+        collectState.running = false;
+        collectState.stopReason = "stopped";
+      }
       stopCollectTimer();
       emitCollect();
       return null;
@@ -2297,7 +2372,10 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
     case "collect_reload_find": {
       if (!collectState || !browserState.url) throw new Error("no collect session is open on the current page");
       const pageUrl = browserState.url;
-      collectState.running = false;
+      if (collectState.running) {
+        collectState.running = false;
+        collectState.stopReason = "stopped";
+      }
       stopCollectTimer();
       emitCollect();
       await delay(1500);
@@ -2320,6 +2398,8 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
       const found = mockCollectFor(browserState.url);
       collectState.shape = shape;
       collectState.items = found.itemsFor(shape);
+      // Like the Rust side: the items start again, so "collected the most" no longer holds.
+      if (collectState.stopReason === "cap") collectState.stopReason = "stopped";
       collectState.otherLinks = mockOtherLinks(found, shape);
       collectState.adsExcluded = settings.collectIncludeAds ? 0 : found.adsExcluded;
       emitCollect();

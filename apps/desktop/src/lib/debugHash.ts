@@ -2,7 +2,8 @@
 // clicks, e.g. #view=library, #view=settings, #theme=dark, #settings=adblock, #sheet=1, and for the
 // mock backend #mockUrl=<url>, #mockLogin=<domain>, #mockMulti=1, #mockUpdate=available. The
 // browser tray can be opened without clicks with #view=browser&mockCollect=1 (links) or
-// #view=browser&mockCollect=images (page images). List
+// #view=browser&mockCollect=images (page images). #view=browser&mockScroll=running|end|stopped|cap
+// opens the links tray in that auto-scroll state (running stays running, cap holds 2,000 items). List
 // screenshots can use #select=<id>,<id>, then #menu=<id> and #confirm=delete. This is
 // not app routing -- real navigation is plain React state. Collect-method screenshots use
 // #view=methods, #mockCollectMethods=empty, #methodsMenu=<kind>-<id>, and
@@ -35,6 +36,11 @@ export interface DebugHashState {
   commentsConflict?: boolean;
   /** Mock backend only: open a page and start collecting links or page images. */
   mockCollect?: "links" | "images" | "played";
+  /**
+   * Mock backend only: open the links page and its tray in this auto-scroll state, which
+   * stays as it is until a button changes it ("running" never ends by itself).
+   */
+  mockScroll?: "running" | "end" | "stopped" | "cap";
   /** Mock backend only: show the recorded-flow prototype with a two-step flow. */
   mockFlow?: boolean;
   /** Mock backend only: start in login mode for the site with this domain. */
@@ -147,6 +153,10 @@ export function readDebugHash(): DebugHashState {
   if (mockCollect === "1") state.mockCollect = "links";
   else if (mockCollect === "images") state.mockCollect = "images";
   else if (mockCollect === "played") state.mockCollect = "played";
+  const mockScroll = params.get("mockScroll");
+  if (mockScroll === "running" || mockScroll === "end" || mockScroll === "stopped" || mockScroll === "cap") {
+    state.mockScroll = mockScroll;
+  }
   if (params.get("mockFlow") === "1") state.mockFlow = true;
   const mockLogin = params.get("mockLogin");
   if (mockLogin) state.mockLogin = mockLogin;

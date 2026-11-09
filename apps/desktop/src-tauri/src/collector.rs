@@ -10,8 +10,18 @@ use crate::browser::BrowserManager;
 use crate::state::{AppState, lock_recover};
 
 pub(crate) const COLLECTOR_SCRIPT: &str = include_str!("collector.js");
-/// Wait after each scroll before the next scan (the fetching etiquette's 1.5 s).
+/// Wait after each scroll before the next scan (the fetching etiquette's 1.5 s): a source
+/// check's fixed wait, and the longest the collect loop waits for a page that is not at its
+/// end to grow.
 pub(crate) const SCROLL_WAIT: Duration = Duration::from_millis(1500);
+/// How often the collect loop looks at the page while it waits after a scroll; a stop takes
+/// effect within one tick.
+const SCROLL_TICK: Duration = Duration::from_millis(250);
+/// The soonest the collect loop goes on after a scroll, even when the page has grown already.
+const SCROLL_MIN_WAIT: Duration = Duration::from_millis(400);
+/// How long the collect loop waits at the end of the page for more to load before it looks
+/// one last time and stops.
+const SCROLL_END_WAIT: Duration = Duration::from_millis(5000);
 const PLAYED_REFRESH: Duration = Duration::from_secs(2);
 const RELOAD_LOAD_LIMIT: Duration = Duration::from_secs(10);
 const RELOAD_PLAY_AFTER: Duration = Duration::from_secs(3);
@@ -76,12 +86,28 @@ pub struct CollectLinks {
     pub urls: Vec<String>,
 }
 
+/// Why a collect run is not running (`CollectState::stop_reason`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CollectStopReason {
+    /// The page's end was reached and nothing more loaded for a while.
+    End,
+    /// The user stopped it, the page changed, or it failed (see `error`).
+    Stopped,
+    /// The session holds the most items it keeps.
+    Cap,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CollectState {
     pub running: bool,
+    /// How many scroll steps this session has made. Informational: nothing stops on it.
     pub scrolls: u32,
+    /// Kept for the saved rule's `stop.maxPages`; the collect loop no longer stops on it.
     pub max_scrolls: u32,
+    /// Why the run ended; `None` while it runs and before the first run.
+    pub stop_reason: Option<CollectStopReason>,
     pub groups: Vec<CollectGroup>,
     pub shape: Option<String>,
     pub items: Vec<CollectItem>,
@@ -98,7 +124,6 @@ pub struct CollectState {
 struct CollectSession {
     generation: u64,
     page_url: String,
-    no_new_scans: u8,
     /// True when the shape was chosen by the user or a saved rule; otherwise every scan
     /// picks the largest group again (the page grows while it scrolls).
     shape_fixed: bool,
@@ -164,6 +189,83 @@ fn reload_find_decision(
     ReloadFindDecision::KeepWaiting
 }
 
+/// What the collect loop does at one tick while it waits after a scroll.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ScrollWait {
+    KeepWaiting,
+    /// Scroll again.
+    GoOn,
+    /// The end of the page and nothing loaded for the whole wait: scan once more.
+    LookAgain,
+}
+
+/// The wait after a scroll, decided at each tick from the time `waited` since the scroll,
+/// whether the scroll ended at the end of the page (`at_end`, also true when it did not
+/// move) and whether the page is taller than the scroll left it (`grew`).
+///
+/// A page that grew goes on at the first tick from 0.4 s. Not at the end, a page that
+/// does not grow goes on after 1.5 s anyway (a feed that fills in later is scrolled on
+/// to). At the end a page that does not grow is given 5 s to load more, then looked at
+/// once more.
+fn scroll_wait_decision(waited: Duration, at_end: bool, grew: bool) -> ScrollWait {
+    if grew && waited >= SCROLL_MIN_WAIT {
+        ScrollWait::GoOn
+    } else if at_end {
+        if waited >= SCROLL_END_WAIT {
+            ScrollWait::LookAgain
+        } else {
+            ScrollWait::KeepWaiting
+        }
+    } else if waited >= SCROLL_WAIT {
+        ScrollWait::GoOn
+    } else {
+        ScrollWait::KeepWaiting
+    }
+}
+
+/// Where the content scrolls, as `step()` and `scrollInfo()` of the collector report it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ScrollReport {
+    /// The scroller's full content height.
+    height: f64,
+    at_end: bool,
+    /// Whether the scroll position changed; always false for `scrollInfo()`, which does not scroll.
+    moved: bool,
+}
+
+impl ScrollReport {
+    /// After a scroll step: at the end of the content, or not able to move at all (nothing
+    /// scrolls, or the page ignores scrolling), which the loop treats the same way.
+    fn ends_the_page(&self) -> bool {
+        self.at_end || !self.moved
+    }
+}
+
+/// The report comes from the page, so each field is checked.
+fn parse_scroll_report(value: &Value) -> Result<ScrollReport, String> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| "collector returned a non-object scroll result".to_owned())?;
+    let height = object
+        .get("height")
+        .and_then(Value::as_f64)
+        .filter(|height| height.is_finite() && *height >= 0.0)
+        .ok_or_else(|| "collector scroll result has no valid height".to_owned())?;
+    let at_end = object
+        .get("atEnd")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| "collector scroll result has no atEnd".to_owned())?;
+    let moved = object
+        .get("moved")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    Ok(ScrollReport {
+        height,
+        at_end,
+        moved,
+    })
+}
+
 #[derive(Debug, Serialize)]
 pub struct CollectReloadFindResult {
     found: usize,
@@ -201,6 +303,7 @@ impl CollectorManager {
             current.generation = current.generation.wrapping_add(1);
             generation = current.generation;
             current.state.running = true;
+            current.state.stop_reason = None;
             current.state.error = None;
             current.state.max_scrolls = max_scrolls;
             if current.include_ads != include_ads {
@@ -208,7 +311,6 @@ impl CollectorManager {
                 current.state.ads_excluded = 0;
             }
             current.include_ads = include_ads;
-            current.no_new_scans = 0;
             if shape.is_some() {
                 current.state.shape = shape.clone();
                 current.shape_fixed = true;
@@ -227,7 +329,6 @@ impl CollectorManager {
             *session = Some(CollectSession {
                 generation,
                 page_url: page_url.clone(),
-                no_new_scans: 0,
                 shape_fixed,
                 include_ads,
                 ads: HashSet::new(),
@@ -235,6 +336,7 @@ impl CollectorManager {
                     running: true,
                     scrolls: 0,
                     max_scrolls: saved_max_scrolls,
+                    stop_reason: None,
                     groups: Vec::new(),
                     shape: saved_shape,
                     items: Vec::new(),
@@ -266,7 +368,10 @@ impl CollectorManager {
             .as_mut()
             .ok_or_else(|| "no collect session is open".to_owned())?;
         current.generation = current.generation.wrapping_add(1);
-        current.state.running = false;
+        if current.state.running {
+            current.state.running = false;
+            current.state.stop_reason = Some(CollectStopReason::Stopped);
+        }
         let state = current.state.clone();
         drop(session);
         emit_state(app, &state);
@@ -291,7 +396,10 @@ impl CollectorManager {
                 .filter(|current| current.page_url == page_url)
                 .ok_or_else(|| "no collect session is open on the current page".to_owned())?;
             current.generation = current.generation.wrapping_add(1);
-            current.state.running = false;
+            if current.state.running {
+                current.state.running = false;
+                current.state.stop_reason = Some(CollectStopReason::Stopped);
+            }
             let generation = current.generation;
             let state = current.state.clone();
             drop(session);
@@ -379,7 +487,6 @@ impl CollectorManager {
             .as_mut()
             .ok_or_else(|| "no collect session is open".to_owned())?;
         current.generation = current.generation.wrapping_add(1);
-        current.no_new_scans = 0;
         current.shape_fixed = true;
         current.include_ads = include_ads;
         current.state.shape = Some(shape);
@@ -387,6 +494,11 @@ impl CollectorManager {
         current.ads.clear();
         current.state.ads_excluded = 0;
         current.state.error = None;
+        // The items start again, so "collected the most there can be" no longer holds; the
+        // tray offers 続ける instead of nothing.
+        if current.state.stop_reason == Some(CollectStopReason::Cap) {
+            current.state.stop_reason = Some(CollectStopReason::Stopped);
+        }
         let generation = current.generation;
         let running = current.state.running;
         let state = current.state.clone();
@@ -588,7 +700,12 @@ impl CollectorManager {
             .or(Some(None))
     }
 
+    /// Scrolls the page by steps until its end, the item cap or a stop: scan, scroll, then
+    /// wait (in ticks) for the page to load what the scroll revealed. See
+    /// [`scroll_wait_decision`] for how long that takes.
     async fn run_loop(&self, app: &AppHandle, generation: u64) {
+        let step_script = format!("{COLLECTOR_SCRIPT}\nwindow.__vdlCollector.step()");
+        let info_script = format!("{COLLECTOR_SCRIPT}\nwindow.__vdlCollector.scrollInfo()");
         loop {
             if !self.is_current_running(generation) {
                 return;
@@ -597,62 +714,103 @@ impl CollectorManager {
                 self.fail(app, generation, error);
                 return;
             }
-            let new_items = match self.scan_and_merge(app, generation).await {
-                Ok(new_items) => new_items,
+            if let Err(error) = self.scan_and_merge(app, generation).await {
+                self.fail(app, generation, error);
+                return;
+            }
+            match self.running_item_count(generation) {
+                None => return,
+                Some(count) if count >= MAX_SCAN_ITEMS => {
+                    self.finish(app, generation, CollectStopReason::Cap);
+                    return;
+                }
+                Some(_) => {}
+            }
+
+            let stepped = match self.scroll_report(&step_script).await {
+                Ok(report) => report,
                 Err(error) => {
                     self.fail(app, generation, error);
                     return;
                 }
             };
-            let should_stop = {
-                let mut session = lock_recover(&self.session);
-                let Some(current) = session
-                    .as_mut()
-                    .filter(|current| current.generation == generation && current.state.running)
-                else {
+            self.count_scroll(generation);
+            let at_end = stepped.ends_the_page();
+            let started = Instant::now();
+            loop {
+                tokio::time::sleep(SCROLL_TICK).await;
+                if !self.is_current_running(generation) {
                     return;
+                }
+                if self.ensure_page(generation).is_err() {
+                    self.stop_for_page_change(app, generation);
+                    return;
+                }
+                let info = match self.scroll_report(&info_script).await {
+                    Ok(report) => report,
+                    Err(error) => {
+                        self.fail(app, generation, error);
+                        return;
+                    }
                 };
-                if new_items == 0 {
-                    current.no_new_scans = current.no_new_scans.saturating_add(1);
-                } else {
-                    current.no_new_scans = 0;
+                let grew = info.height > stepped.height;
+                match scroll_wait_decision(started.elapsed(), at_end, grew) {
+                    ScrollWait::KeepWaiting => {}
+                    ScrollWait::GoOn => break,
+                    ScrollWait::LookAgain => {
+                        // Nothing loaded for the whole wait at the end: one more scan decides.
+                        match self.scan_and_merge(app, generation).await {
+                            Ok(0) => {
+                                self.finish(app, generation, CollectStopReason::End);
+                                return;
+                            }
+                            Ok(_) => break,
+                            Err(error) => {
+                                self.fail(app, generation, error);
+                                return;
+                            }
+                        }
+                    }
                 }
-                let stop =
-                    current.no_new_scans >= 2 || current.state.scrolls >= current.state.max_scrolls;
-                if stop {
-                    current.state.running = false;
-                }
-                let state = current.state.clone();
-                drop(session);
-                emit_state(app, &state);
-                stop
-            };
-            if should_stop {
-                return;
             }
+        }
+    }
 
-            if let Err(error) = self
-                .browser
-                .execute(&format!("{COLLECTOR_SCRIPT}\nwindow.__vdlCollector.step()"))
-                .await
-            {
-                self.fail(app, generation, error);
-                return;
-            }
-            tokio::time::sleep(SCROLL_WAIT).await;
-            if self.ensure_page(generation).is_err() {
-                self.stop_for_page_change(app, generation);
-                return;
-            }
-            let mut session = lock_recover(&self.session);
-            let Some(current) = session
-                .as_mut()
-                .filter(|current| current.generation == generation && current.state.running)
-            else {
-                return;
-            };
+    async fn scroll_report(&self, script: &str) -> Result<ScrollReport, String> {
+        parse_scroll_report(&self.browser.execute(script).await?)
+    }
+
+    /// The number of items the session holds, while `generation` is still the one running.
+    fn running_item_count(&self, generation: u64) -> Option<usize> {
+        lock_recover(&self.session)
+            .as_ref()
+            .filter(|current| current.generation == generation && current.state.running)
+            .map(|current| current.state.items.len())
+    }
+
+    fn count_scroll(&self, generation: u64) {
+        if let Some(current) = lock_recover(&self.session)
+            .as_mut()
+            .filter(|current| current.generation == generation && current.state.running)
+        {
             current.state.scrolls = current.state.scrolls.saturating_add(1);
         }
+    }
+
+    /// Ends the run `generation` with `reason`, unless it was stopped or replaced meanwhile.
+    fn finish(&self, app: &AppHandle, generation: u64, reason: CollectStopReason) {
+        let mut session = lock_recover(&self.session);
+        let Some(current) = session
+            .as_mut()
+            .filter(|current| current.generation == generation && current.state.running)
+        else {
+            return;
+        };
+        current.state.running = false;
+        current.state.stop_reason = Some(reason);
+        let state = current.state.clone();
+        drop(session);
+        emit_state(app, &state);
     }
 
     async fn scan_and_merge(&self, app: &AppHandle, generation: u64) -> Result<usize, String> {
@@ -770,6 +928,7 @@ impl CollectorManager {
             return;
         };
         current.state.running = false;
+        current.state.stop_reason = Some(CollectStopReason::Stopped);
         let state = current.state.clone();
         drop(session);
         emit_state(app, &state);
@@ -784,6 +943,7 @@ impl CollectorManager {
             return;
         };
         current.state.running = false;
+        current.state.stop_reason = Some(CollectStopReason::Stopped);
         current.state.error = Some(error);
         let state = current.state.clone();
         drop(session);
@@ -1179,9 +1339,10 @@ fn unix_now() -> i64 {
 mod tests {
     use super::{
         COLLECTOR_SCRIPT, CollectGroup, CollectItem, CollectLinks, CollectPage, CollectState,
-        MAX_SCAN_ITEMS, MAX_URL_CHARS, PLAYED_SHAPE, ReloadFindDecision, build_rule_json,
-        glob_matches, merge_items, parse_scan_result, preferred_shape, reload_find_decision,
-        reveal_expression, scan_expression,
+        CollectStopReason, MAX_SCAN_ITEMS, MAX_URL_CHARS, PLAYED_SHAPE, ReloadFindDecision,
+        ScrollReport, ScrollWait, build_rule_json, glob_matches, merge_items, parse_scan_result,
+        parse_scroll_report, preferred_shape, reload_find_decision, reveal_expression,
+        scan_expression, scroll_wait_decision,
     };
     use serde_json::json;
     use std::collections::HashSet;
@@ -1261,6 +1422,96 @@ mod tests {
             ),
             ReloadFindDecision::KeepWaiting
         );
+    }
+
+    fn wait_at(millis: u64, at_end: bool, grew: bool) -> ScrollWait {
+        scroll_wait_decision(Duration::from_millis(millis), at_end, grew)
+    }
+
+    #[test]
+    fn a_page_that_grew_goes_on_at_the_first_tick_from_400_ms() {
+        for at_end in [false, true] {
+            assert_eq!(wait_at(250, at_end, true), ScrollWait::KeepWaiting);
+            assert_eq!(wait_at(399, at_end, true), ScrollWait::KeepWaiting);
+            assert_eq!(wait_at(500, at_end, true), ScrollWait::GoOn);
+            assert_eq!(wait_at(400, at_end, true), ScrollWait::GoOn);
+        }
+    }
+
+    #[test]
+    fn a_page_that_is_not_at_the_end_goes_on_after_1500_ms_without_growing() {
+        assert_eq!(wait_at(0, false, false), ScrollWait::KeepWaiting);
+        assert_eq!(wait_at(500, false, false), ScrollWait::KeepWaiting);
+        assert_eq!(wait_at(1250, false, false), ScrollWait::KeepWaiting);
+        assert_eq!(wait_at(1500, false, false), ScrollWait::GoOn);
+        assert_eq!(wait_at(1750, false, false), ScrollWait::GoOn);
+    }
+
+    #[test]
+    fn at_the_end_a_page_that_does_not_grow_is_looked_at_once_more_after_5000_ms() {
+        assert_eq!(wait_at(500, true, false), ScrollWait::KeepWaiting);
+        assert_eq!(wait_at(1500, true, false), ScrollWait::KeepWaiting);
+        assert_eq!(wait_at(4750, true, false), ScrollWait::KeepWaiting);
+        assert_eq!(wait_at(5000, true, false), ScrollWait::LookAgain);
+        assert_eq!(wait_at(5250, true, false), ScrollWait::LookAgain);
+    }
+
+    #[test]
+    fn at_the_end_growth_beats_the_final_look() {
+        assert_eq!(wait_at(5000, true, true), ScrollWait::GoOn);
+        assert_eq!(wait_at(3000, true, true), ScrollWait::GoOn);
+    }
+
+    #[test]
+    fn scroll_reports_are_checked() {
+        assert_eq!(
+            parse_scroll_report(&json!({
+                "target": "window", "top": 900, "height": 2400.0, "client": 800,
+                "atEnd": false, "moved": true
+            }))
+            .unwrap(),
+            ScrollReport {
+                height: 2400.0,
+                at_end: false,
+                moved: true
+            }
+        );
+        // scrollInfo() does not scroll, so it carries no `moved`.
+        assert_eq!(
+            parse_scroll_report(&json!({ "height": 2400, "atEnd": true })).unwrap(),
+            ScrollReport {
+                height: 2400.0,
+                at_end: true,
+                moved: false
+            }
+        );
+        for bad in [
+            json!(null),
+            json!([]),
+            json!({ "atEnd": true }),
+            json!({ "height": "2400", "atEnd": true }),
+            json!({ "height": -1, "atEnd": true }),
+            json!({ "height": 100 }),
+            json!({ "height": 100, "atEnd": "yes" }),
+        ] {
+            assert!(
+                parse_scroll_report(&bad).is_err(),
+                "{bad} should be refused"
+            );
+        }
+    }
+
+    #[test]
+    fn a_step_that_reached_the_end_or_could_not_move_ends_the_page() {
+        let after = |at_end, moved| {
+            parse_scroll_report(&json!({ "height": 900, "atEnd": at_end, "moved": moved }))
+                .unwrap()
+                .ends_the_page()
+        };
+        assert!(!after(false, true));
+        assert!(after(true, true));
+        assert!(after(true, false));
+        assert!(after(false, false));
     }
 
     #[test]
@@ -1527,6 +1778,7 @@ mod tests {
             running: false,
             scrolls: 0,
             max_scrolls: 10,
+            stop_reason: Some(CollectStopReason::Cap),
             groups: Vec::new(),
             shape: Some("{images}".to_owned()),
             items: vec![
@@ -1545,6 +1797,8 @@ mod tests {
             other_links: None,
         };
         let value = serde_json::to_value(&state).unwrap();
+        assert_eq!(value["stopReason"], json!("cap"));
+        assert_eq!(value["maxScrolls"], json!(10));
         assert_eq!(value["items"][0]["index"], json!(1));
         assert_eq!(value["items"][1]["index"], json!(null));
         assert_eq!(
@@ -1557,8 +1811,44 @@ mod tests {
     fn collector_script_keeps_its_entry_points() {
         assert!(COLLECTOR_SCRIPT.contains("function scan("));
         assert!(COLLECTOR_SCRIPT.contains("function step("));
+        assert!(COLLECTOR_SCRIPT.contains("function scrollInfo("));
         assert!(COLLECTOR_SCRIPT.contains("function reveal("));
         assert!(COLLECTOR_SCRIPT.contains("function clear("));
+    }
+
+    #[test]
+    fn stop_reasons_serialize_in_camel_case_and_none_as_null() {
+        let reasons = [
+            (CollectStopReason::End, "end"),
+            (CollectStopReason::Stopped, "stopped"),
+            (CollectStopReason::Cap, "cap"),
+        ];
+        for (reason, text) in reasons {
+            assert_eq!(serde_json::to_value(reason).unwrap(), json!(text));
+        }
+        let mut state = CollectState {
+            running: true,
+            scrolls: 0,
+            max_scrolls: 10,
+            stop_reason: None,
+            groups: Vec::new(),
+            shape: None,
+            items: Vec::new(),
+            ads_excluded: 0,
+            rule_id: None,
+            error: None,
+            page: None,
+            other_links: None,
+        };
+        assert_eq!(
+            serde_json::to_value(&state).unwrap()["stopReason"],
+            json!(null)
+        );
+        state.stop_reason = Some(CollectStopReason::End);
+        assert_eq!(
+            serde_json::to_value(&state).unwrap()["stopReason"],
+            json!("end")
+        );
     }
 
     #[test]
