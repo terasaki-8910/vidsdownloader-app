@@ -7,7 +7,10 @@
 // #view=browser&mockPick=empty|active|picked opens the element picker's states in the tray: "empty"
 // is the played-videos group with nothing played (the empty-state line and its button), "active"
 // the links tray while picking (banner, pressed head button, the mock page's pointer label), and
-// "picked" the links tray with the result of pressing a link (the two choices). List
+// "picked" the links tray with the result of pressing a link (the two choices).
+// #view=browser&mockSaved=1 seeds three saved pages: the "saved pages" list above the sites on the
+// start page, and, with #mockUrl=<the URL of one of them> (through encodeURIComponent), the toolbar's
+// filled star. List
 // screenshots can use #select=<id>,<id>, then #menu=<id> and #confirm=delete. This is
 // not app routing -- real navigation is plain React state. Collect-method screenshots use
 // #view=methods, #mockCollectMethods=empty, #methodsMenu=<kind>-<id>, and
@@ -50,6 +53,8 @@ export interface DebugHashState {
    * the list at the top of this file).
    */
   mockPick?: "empty" | "active" | "picked";
+  /** Mock backend only: three saved pages (the start page's list; a filled star on their URLs). */
+  mockSaved?: boolean;
   /** Mock backend only: show the recorded-flow prototype with a two-step flow. */
   mockFlow?: boolean;
   /** Mock backend only: start in login mode for the site with this domain. */
@@ -168,6 +173,7 @@ export function readDebugHash(): DebugHashState {
   }
   const mockPick = params.get("mockPick");
   if (mockPick === "empty" || mockPick === "active" || mockPick === "picked") state.mockPick = mockPick;
+  if (params.get("mockSaved") === "1") state.mockSaved = true;
   if (params.get("mockFlow") === "1") state.mockFlow = true;
   const mockLogin = params.get("mockLogin");
   if (mockLogin) state.mockLogin = mockLogin;

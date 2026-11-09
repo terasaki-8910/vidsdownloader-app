@@ -1,6 +1,6 @@
 [package]
 name = "vidsdownloader"
-version = "0.1.14"
+version = "0.1.15"
 description = "vidsdownloader desktop app (Tauri shell)"
 edition = "2024"
 

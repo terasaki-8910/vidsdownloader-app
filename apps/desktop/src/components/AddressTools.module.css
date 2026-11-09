@@ -1,0 +1,33 @@
+/* The four page actions inside the address field: 28px buttons, 2px apart. */
+.tools {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* The focus ring is drawn inside the button, so the field's border does not cut it. */
+.tools button:focus-visible {
+  outline-offset: -2px;
+  border-radius: 7px;
+}
+
+/* Tints beat IconButton's own color and its hover color. */
+.tools button.loginOn,
+.tools button.loginOn:hover:not(:disabled) {
+  color: var(--accent-ink);
+}
+
+.tools button.loginOff,
+.tools button.loginOff:hover:not(:disabled) {
+  color: var(--muted);
+}
+
+.tools button.starOn,
+.tools button.starOn:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+.starOn svg {
+  fill: currentColor;
+}

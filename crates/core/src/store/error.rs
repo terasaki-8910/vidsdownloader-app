@@ -18,6 +18,10 @@ pub enum StoreError {
     /// No row exists for the given id.
     #[error("{entity} {id} not found")]
     NotFound { entity: &'static str, id: i64 },
+    /// A value handed to a setter failed its checks (an empty or too long name, a URL that is
+    /// not http(s)); nothing was written. The message says why.
+    #[error("{0}")]
+    Invalid(String),
     /// The on-disk schema version is newer than this build of the store understands.
     #[error("database schema version {0} is newer than supported")]
     UnsupportedSchemaVersion(i64),

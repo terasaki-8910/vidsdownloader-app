@@ -16,14 +16,15 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
-import type { CollectState, Flow, FlowReplayItem, FlowScope, SavedFlow } from "../ipc/contract";
+import type { CollectState, Flow, FlowReplayItem, FlowScope, SavedFlow, SavedPage } from "../ipc/contract";
 import { ipc, usesMockIpc } from "../ipc";
 import { useT } from "../i18n/I18nContext";
 import type { Translations } from "../i18n/types";
 import { IMAGES_SHAPE, PLAYED_SHAPE } from "../lib/collect";
 import { readDebugHash } from "../lib/debugHash";
 import { nextFrame } from "../lib/frame";
-import { hasLoginInfo, selectedAccount, siteHomeUrl, siteStartStatus } from "../lib/sites";
+import { defaultSavedPageName, savedPageUrl } from "../lib/savedPages";
+import { selectedAccount, siteForUrl, siteHomeUrl, siteStartStatus } from "../lib/sites";
 import { registerFailureText } from "../lib/sources";
 import { errorMessage, normalizeUrl } from "../lib/url";
 import { useJobs } from "../state/JobsContext";
@@ -31,14 +32,18 @@ import { useNavigation } from "../state/NavigationContext";
 import { useSettings } from "../state/SettingsContext";
 import { useSites } from "../state/SitesContext";
 import { useSources } from "../state/SourcesContext";
+import { AddressTools } from "./AddressTools";
 import { IconButton } from "./IconButton";
 import { ImportOffer } from "./ImportOffer";
 import { PageImagesTray } from "./PageImagesTray";
+import { SavedPages } from "./SavedPages";
 import styles from "./BrowserView.module.css";
 
 /** How long a loaded page is left alone before an asked-for 集める starts (pages that draw late). */
 const COLLECT_SETTLE_MS = 500;
 const FLOW_MISMATCH_PREFIX = "flow-step-mismatch:";
+/** How long the copy-link button shows that the link was copied. */
+const LINK_COPIED_MS = 1600;
 /** The tray's checks go to the page's badges at most this often. */
 const SELECTION_SYNC_MS = 150;
 
@@ -140,6 +145,9 @@ export function BrowserView({ onOpenSites }: BrowserViewProps) {
   const [flowResults, setFlowResults] = useState<FlowReplayItem[]>([]);
   const [flowCapped, setFlowCapped] = useState(false);
   const [selectedFlowResults, setSelectedFlowResults] = useState<Record<number, boolean>>({});
+  const [savedPages, setSavedPages] = useState<SavedPage[]>([]);
+  /** The toolbar's copy-link button shows a check for a moment after the link was copied. */
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const isLogin = browser.mode === "login";
   const pageOpen = browser.url !== null;
@@ -241,6 +249,27 @@ ${collect.shape}` : null;
     const timer = window.setTimeout(() => setAdded(false), 1600);
     return () => window.clearTimeout(timer);
   }, [added]);
+
+  useEffect(() => {
+    if (!linkCopied) return undefined;
+    const timer = window.setTimeout(() => setLinkCopied(false), LINK_COPIED_MS);
+    return () => window.clearTimeout(timer);
+  }, [linkCopied]);
+
+  useEffect(() => {
+    let current = true;
+    ipc.call("saved_page_list", {}).then(
+      (pages) => {
+        if (current) setSavedPages(pages);
+      },
+      (error) => {
+        if (current) setLocalError(errorMessage(error));
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, []);
 
   useEffect(
     () =>
@@ -418,6 +447,56 @@ ${collect.shape}` : null;
     }
     setLocalError(null);
     void openUrl(url);
+  }
+
+  async function copyLink() {
+    if (!browser.url) return;
+    try {
+      await ipc.call("copy_text", { text: browser.url });
+      setLocalError(null);
+      setLinkCopied(true);
+    } catch (error) {
+      setLocalError(errorMessage(error));
+    }
+  }
+
+  async function openExternal() {
+    if (!browser.url) return;
+    try {
+      await ipc.call("open_external_url", { url: browser.url });
+      setLocalError(null);
+    } catch (error) {
+      setLocalError(errorMessage(error));
+    }
+  }
+
+  /** The star: saves the page as shown (query kept, no #fragment), or takes it off the list. */
+  async function toggleSavedPage() {
+    if (!browser.url) return;
+    const url = savedPageUrl(browser.url);
+    const existing = savedPages.find((page) => page.url === url);
+    try {
+      if (existing) {
+        await ipc.call("saved_page_remove", { id: existing.id });
+        setSavedPages((previous) => previous.filter((page) => page.id !== existing.id));
+      } else {
+        const page = await ipc.call("saved_page_add", { url, name: defaultSavedPageName(url) });
+        setSavedPages((previous) => (previous.some((item) => item.id === page.id) ? previous : [...previous, page]));
+      }
+      setLocalError(null);
+    } catch (error) {
+      setLocalError(errorMessage(error));
+    }
+  }
+
+  async function renameSavedPage(id: number, name: string) {
+    const page = await ipc.call("saved_page_rename", { id, name });
+    setSavedPages((previous) => previous.map((item) => (item.id === id ? page : item)));
+  }
+
+  async function removeSavedPage(id: number) {
+    await ipc.call("saved_page_remove", { id });
+    setSavedPages((previous) => previous.filter((page) => page.id !== id));
   }
 
   async function addPage() {
@@ -787,81 +866,98 @@ ${collect.shape}` : null;
     }
   }
 
+  // The login key's status: the site's, with the account's name when the site has several.
   const account = site ? selectedAccount(site) : null;
-  const chipBase = hasLoginInfo(account) ? t.browser.loginPresent : t.browser.loginAbsent;
-  const chipText = site && account && site.accounts.length > 1 ? t.browser.chipWithAccount(chipBase, account.label) : chipBase;
+  const loginStatus = site ? siteStartStatus(t, site) : null;
+  const loginLabel =
+    loginStatus && account && site && site.accounts.length > 1
+      ? t.browser.chipWithAccount(loginStatus.text, account.label)
+      : (loginStatus?.text ?? "");
+  // The page's own actions sit in the address field; a login page has none of them.
+  const pageActionsShown = pageOpen && !isLogin;
+  const pageSaved = browser.url !== null && savedPages.some((page) => page.url === savedPageUrl(browser.url ?? ""));
   const loginSiteName = site?.name ?? (browser.url ? safeHost(browser.url) : "");
   const message = localError ?? (browserError ? t.browser.failed(browserError) : null);
 
   return (
     <section className={styles.browser}>
       <div className={styles.bar}>
-        <IconButton label={t.browser.back} disabled={!pageOpen} onClick={() => void ipc.call("browser_back", {})}>
-          <ArrowLeft size={18} aria-hidden />
-        </IconButton>
-        <IconButton label={t.browser.forward} disabled={!pageOpen} onClick={() => void ipc.call("browser_forward", {})}>
-          <ArrowRight size={18} aria-hidden />
-        </IconButton>
-        <IconButton label={t.browser.reload} disabled={!pageOpen} onClick={() => void ipc.call("browser_reload", {})}>
-          <RotateCw size={17} aria-hidden className={browser.loading ? styles.spin : undefined} />
-        </IconButton>
-        <IconButton label={t.browser.siteList} disabled={!pageOpen || isLogin} onClick={() => void showStartPage()}>
-          <LayoutList size={18} aria-hidden />
-        </IconButton>
+        <div className={styles.navGroup}>
+          <IconButton label={t.browser.back} disabled={!pageOpen} onClick={() => void ipc.call("browser_back", {})}>
+            <ArrowLeft size={18} aria-hidden />
+          </IconButton>
+          <IconButton label={t.browser.forward} disabled={!pageOpen} onClick={() => void ipc.call("browser_forward", {})}>
+            <ArrowRight size={18} aria-hidden />
+          </IconButton>
+          <IconButton label={t.browser.reload} disabled={!pageOpen} onClick={() => void ipc.call("browser_reload", {})}>
+            <RotateCw size={17} aria-hidden className={browser.loading ? styles.spin : undefined} />
+          </IconButton>
+          <IconButton label={t.browser.siteList} disabled={!pageOpen || isLogin} onClick={() => void showStartPage()}>
+            <LayoutList size={18} aria-hidden />
+          </IconButton>
+        </div>
 
-        <form className={styles.addr} onSubmit={submitAddress}>
-          {browser.url?.startsWith("https:") ? <Lock size={14} aria-hidden /> : <Globe size={14} aria-hidden />}
-          <input
-            value={draft}
-            onChange={(e) => {
-              setDraft(e.target.value);
-              setLocalError(null);
-            }}
-            readOnly={isLogin}
-            placeholder={t.browser.addressPlaceholder}
-            aria-label={t.browser.address}
-            aria-invalid={localError === t.browser.invalidUrl || undefined}
-            spellCheck={false}
-            autoComplete="off"
-          />
-        </form>
+        <div className={styles.addrRow}>
+          <form className={`${styles.addr} ${pageActionsShown ? styles.addrWithTools : ""}`} onSubmit={submitAddress}>
+            {browser.url?.startsWith("https:") ? <Lock size={14} aria-hidden /> : <Globe size={14} aria-hidden />}
+            <input
+              value={draft}
+              onChange={(e) => {
+                setDraft(e.target.value);
+                setLocalError(null);
+              }}
+              readOnly={isLogin}
+              placeholder={t.browser.addressPlaceholder}
+              aria-label={t.browser.address}
+              aria-invalid={localError === t.browser.invalidUrl || undefined}
+              spellCheck={false}
+              autoComplete="off"
+            />
+            {pageActionsShown && (
+              <AddressTools
+                login={loginStatus ? { present: loginStatus.present, label: loginLabel } : null}
+                copied={linkCopied}
+                saved={pageSaved}
+                onLogin={onOpenSites}
+                onCopy={() => void copyLink()}
+                onToggleSaved={() => void toggleSavedPage()}
+                onOpenExternal={() => void openExternal()}
+              />
+            )}
+          </form>
+        </div>
 
-        {pageOpen && !isLogin && site && (
-          <span className={hasLoginInfo(account) ? styles.chipOn : styles.chip} title={chipText}>
-            <KeyRound size={14} aria-hidden />
-            <span className={styles.chipText}>{chipText}</span>
-          </span>
-        )}
-
-        {pageOpen && !isLogin && (
-          <button type="button" className={styles.secondary} onClick={() => void startCollect()}>
-            <LayoutGrid size={16} aria-hidden />
-            {t.browser.collect}
-          </button>
-        )}
-
-        {pageOpen && !isLogin && (
-          <div className={styles.flowRecordControl}>
-            <button type="button" className={styles.ghost} onClick={() => void toggleFlowRecording()}>
-              <MousePointerClick size={16} aria-hidden />
-              {recording ? t.browser.flowRecordStop : t.browser.flowRecord}
+        <div className={styles.actionGroup}>
+          {pageOpen && !isLogin && (
+            <button type="button" className={styles.secondary} onClick={() => void startCollect()}>
+              <LayoutGrid size={16} aria-hidden />
+              {t.browser.collect}
             </button>
-            {recording && <span aria-live="polite">{t.browser.flowRecording(recordedSteps)}</span>}
-          </div>
-        )}
+          )}
 
-        {pageOpen && (
-          <button
-            type="button"
-            className={isLogin || collect ? styles.secondary : styles.primary}
-            onClick={() => void addPage()}
-            disabled={!settings}
-            aria-live="polite"
-          >
-            {added ? <Check size={16} aria-hidden /> : <Plus size={16} aria-hidden />}
-            {added ? t.browser.pageAdded : t.browser.addPage}
-          </button>
-        )}
+          {pageOpen && !isLogin && (
+            <div className={styles.flowRecordControl}>
+              <button type="button" className={styles.ghost} onClick={() => void toggleFlowRecording()}>
+                <MousePointerClick size={16} aria-hidden />
+                {recording ? t.browser.flowRecordStop : t.browser.flowRecord}
+              </button>
+              {recording && <span aria-live="polite">{t.browser.flowRecording(recordedSteps)}</span>}
+            </div>
+          )}
+
+          {pageOpen && (
+            <button
+              type="button"
+              className={isLogin || collect ? styles.secondary : styles.primary}
+              onClick={() => void addPage()}
+              disabled={!settings}
+              aria-live="polite"
+            >
+              {added ? <Check size={16} aria-hidden /> : <Plus size={16} aria-hidden />}
+              {added ? t.browser.pageAdded : t.browser.addPage}
+            </button>
+          )}
+        </div>
       </div>
 
       {isLogin && (
@@ -888,6 +984,16 @@ ${collect.shape}` : null;
           {!pageOpen ? (
           <div className={styles.start} ref={startRef}>
             <ImportOffer onGone={() => void focusStartList()} />
+            {savedPages.length > 0 && (
+              <SavedPages
+                pages={savedPages}
+                letterFor={(page) => (siteForUrl(sites, page.url)?.name ?? siteHost(page.url)).slice(0, 1).toUpperCase()}
+                onOpen={(url) => void openUrl(url)}
+                onRename={renameSavedPage}
+                onRemove={removeSavedPage}
+                onEmptied={() => void focusStartList()}
+              />
+            )}
             <h1 className={styles.startTitle}>{t.browser.startTitle}</h1>
             {sites.length > 0 && (
               <ul className={styles.siteList}>

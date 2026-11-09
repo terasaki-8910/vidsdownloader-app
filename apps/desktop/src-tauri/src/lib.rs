@@ -13,6 +13,7 @@ mod methods;
 mod models;
 mod notify;
 mod page_media;
+mod saved_pages;
 mod site_probe;
 mod sites;
 mod sources;
@@ -42,9 +43,9 @@ use crate::collector::{
 use crate::commands::{
     cancel_job, copy_text, enqueue_page_images, enqueue_page_media, enqueue_urls,
     forward_queue_events, get_settings, install_tools, job_file_exists, jobs_remove,
-    library_search, open_job_file, page_media_choose, pick_download_dir, pick_folder,
-    queue_snapshot, read_clipboard_url, retry_job, reveal_path, save_again, set_settings,
-    tools_status,
+    library_search, open_external_url, open_job_file, page_media_choose, pick_download_dir,
+    pick_folder, queue_snapshot, read_clipboard_url, retry_job, reveal_path, save_again,
+    set_settings, tools_status,
 };
 use crate::comments_commands::{
     comments_extract, comments_resolve, file_extract_comments, pick_video_file,
@@ -59,6 +60,7 @@ use crate::library_commands::{
 use crate::login_import::{firefox_import, firefox_profiles_info};
 use crate::methods::{method_delete, method_rename, method_set_options, methods_list};
 use crate::models::Settings;
+use crate::saved_pages::{saved_page_add, saved_page_list, saved_page_remove, saved_page_rename};
 use crate::site_probe::site_probe;
 use crate::sources::{
     SourceManager, source_check, source_check_all, source_delete, source_preview,
@@ -185,6 +187,7 @@ pub fn run() {
             jobs_remove,
             read_clipboard_url,
             copy_text,
+            open_external_url,
             library_search,
             library_open,
             library_open_with,
@@ -251,6 +254,10 @@ pub fn run() {
             flow_delete,
             flow_replay,
             flow_replay_cancel,
+            saved_page_list,
+            saved_page_add,
+            saved_page_rename,
+            saved_page_remove,
             sources_list,
             source_preview,
             source_preview_collect,

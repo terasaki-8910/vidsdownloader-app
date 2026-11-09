@@ -134,7 +134,7 @@ fn version_one_database_gains_queue_persistence_columns() {
     assert_eq!(
         conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
             .unwrap(),
-        6
+        7
     );
 }
 
@@ -216,7 +216,7 @@ fn version_two_database_gains_the_already_saved_column() {
     assert_eq!(
         conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
             .unwrap(),
-        6
+        7
     );
 }
 
@@ -267,7 +267,7 @@ fn version_three_database_gains_the_source_result_column() {
     assert_eq!(
         conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
             .unwrap(),
-        6
+        7
     );
 }
 
@@ -319,6 +319,80 @@ fn version_five_methods_gain_empty_options_and_no_last_use() {
     assert_eq!(
         conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
             .unwrap(),
-        6
+        7
     );
+}
+
+#[test]
+fn version_six_database_gains_saved_pages() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("v6.sqlite3");
+    {
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE rules (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                match_pattern TEXT NOT NULL,
+                rule_json TEXT NOT NULL,
+                options_json TEXT NOT NULL DEFAULT '{}',
+                last_used_at INTEGER,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            INSERT INTO rules (id, name, match_pattern, rule_json, created_at, updated_at) VALUES
+                (2, 'Old rule', 'https://example.com/*', '{\"name\":\"Old rule\"}', 10, 10);
+            PRAGMA user_version = 6;",
+        )
+        .unwrap();
+    }
+
+    let store = Store::open(&path).expect("v6 migrates to v7");
+    assert_eq!(store.get_rule(2).unwrap().name, "Old rule");
+    assert!(store.list_saved_pages().unwrap().is_empty());
+    let page = store
+        .add_saved_page("https://example.com/list?page=2#top", "List", 50)
+        .unwrap();
+    assert_eq!(page.url, "https://example.com/list?page=2");
+    drop(store);
+
+    // The saved page survives a reopen, and the version stays at 7.
+    let store = Store::open(&path).expect("v7 reopens");
+    assert_eq!(store.list_saved_pages().unwrap(), vec![page]);
+    drop(store);
+
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    assert_eq!(
+        conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+            .unwrap(),
+        7
+    );
+    let sql: String = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE name = 'saved_pages'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(sql.contains("url TEXT NOT NULL UNIQUE"), "{sql}");
+}
+
+#[test]
+fn a_database_from_a_newer_build_is_refused() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("newer.sqlite3");
+    {
+        let store = Store::open(&path).expect("a new database is created at the latest version");
+        drop(store);
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.pragma_update(None, "user_version", 8).unwrap();
+    }
+
+    match Store::open(&path) {
+        Err(vids_core::store::StoreError::UnsupportedSchemaVersion(8)) => {}
+        other => panic!(
+            "expected the newer database to be refused, got {:?}",
+            other.err()
+        ),
+    }
 }

@@ -134,6 +134,17 @@ const SCHEMA_V6: &str = "
     ALTER TABLE flows ADD COLUMN last_used_at INTEGER;
 ";
 
+/// Pages the user saved in the in-app browser. The URL is kept exactly as it was shown (query
+/// included, `#fragment` dropped), and a URL is saved once.
+const SCHEMA_V7: &str = "
+    CREATE TABLE saved_pages (
+        id INTEGER PRIMARY KEY,
+        url TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+    );
+";
+
 /// Every schema version in order, paired with the SQL that creates it from the
 /// previous one. Add a new `(version, sql)` entry here for the next migration;
 /// never change an entry that has already shipped.
@@ -144,6 +155,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (4, SCHEMA_V4),
     (5, SCHEMA_V5),
     (6, SCHEMA_V6),
+    (7, SCHEMA_V7),
 ];
 
 /// Apply any migrations this connection is missing, each inside its own

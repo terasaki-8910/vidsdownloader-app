@@ -1,5 +1,5 @@
-//! SQLite storage: jobs, library, sources, known items, rules, site profiles and
-//! settings.
+//! SQLite storage: jobs, library, sources, known items, rules, saved pages, site profiles
+//! and settings.
 //!
 //! [`Store`] wraps one `rusqlite` connection. Opening a database (file or
 //! in-memory) applies any pending migrations tracked by `PRAGMA user_version`;
@@ -25,6 +25,7 @@ mod known_items;
 mod library;
 mod migrations;
 mod rules;
+mod saved_pages;
 mod settings;
 mod site_profiles;
 mod sources;
@@ -39,6 +40,7 @@ pub use flows::{Flow, NewFlow};
 pub use jobs::{Job, JobFilter, NewJob};
 pub use library::{ErasedItem, LibraryItem, LibraryQuery, NewLibraryItem};
 pub use rules::Rule;
+pub use saved_pages::{MAX_SAVED_NAME_CHARS, MAX_SAVED_URL_CHARS, SavedPage};
 pub use site_profiles::SiteProfile;
 pub use sources::{NewSource, Source, SourceKind};
 

@@ -653,6 +653,26 @@ pub async fn copy_text(text: String, app: AppHandle) -> Result<(), String> {
         .map_err(|error| error.to_string())
 }
 
+/// Opens an http(s) page in the operating system's default browser (the in-app browser's
+/// "open in the default browser" button). Any other scheme is refused: this command must not
+/// start a program or open a local path.
+#[tauri::command]
+pub async fn open_external_url(url: String, app: AppHandle) -> Result<(), String> {
+    let url = external_url(&url)?;
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|error| error.to_string())
+}
+
+fn external_url(url: &str) -> Result<String, String> {
+    let parsed = tauri::Url::parse(url.trim()).map_err(|_| "the URL is not valid".to_owned())?;
+    if matches!(parsed.scheme(), "http" | "https") && parsed.host_str().is_some() {
+        Ok(parsed.into())
+    } else {
+        Err("only http(s) pages can be opened in the default browser".to_owned())
+    }
+}
+
 #[tauri::command]
 pub async fn library_search(
     text: Option<String>,
@@ -1147,6 +1167,26 @@ mod tests {
     use vids_core::types::JobState;
 
     const HANG: Duration = Duration::from_secs(10);
+
+    #[test]
+    fn only_http_pages_open_in_the_default_browser() {
+        assert_eq!(
+            external_url(" https://www.youtube.com/@Blender/videos?view=0&sort=dd ").unwrap(),
+            "https://www.youtube.com/@Blender/videos?view=0&sort=dd"
+        );
+        assert!(external_url("http://example.com/").is_ok());
+        for url in [
+            "",
+            "example.com",
+            "file:///C:/Windows/System32/calc.exe",
+            "javascript:alert(1)",
+            "mailto:someone@example.com",
+            "ms-settings:network",
+            "C:\\Windows\\notepad.exe",
+        ] {
+            assert!(external_url(url).is_err(), "{url}");
+        }
+    }
 
     struct RemovalRun {
         id: JobId,

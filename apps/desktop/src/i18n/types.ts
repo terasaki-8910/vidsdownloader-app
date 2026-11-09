@@ -485,10 +485,19 @@ export interface Translations {
     collectFailed: (message: string) => string;
     revealItem: string;
     revealGone: string;
-    loginPresent: string;
     loginAbsent: string;
-    /** Chip text with the account label, shown when a site has several accounts. */
+    /** The login key's label with the account's name, shown when a site has several accounts. */
     chipWithAccount: (state: string, account: string) => string;
+    /** The toolbar's page actions, inside the address field. */
+    copyLink: string;
+    /** The copy button's name (and tooltip) for a moment after the link was copied. */
+    linkCopied: string;
+    savePage: string;
+    unsavePage: string;
+    openExternal: string;
+    /** The start page's heading above the list of saved pages, and the name of each row's "..." menu. */
+    savedPages: string;
+    savedMenu: string;
     loginBanner: (site: string) => string;
     loginCancel: string;
     loginDone: string;

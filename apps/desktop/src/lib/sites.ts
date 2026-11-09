@@ -42,6 +42,25 @@ export function siteStartStatus(t: Translations, site: Site): { text: string; pr
   return { text: t.browser.siteLoginPresent(date), present: true };
 }
 
+/** The registered site a page belongs to (the longest matching domain), or null. */
+export function siteForUrl(sites: Site[], url: string): Site | null {
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+  let best: { site: Site; length: number } | null = null;
+  for (const site of sites) {
+    for (const domain of site.domains) {
+      if ((host === domain || host.endsWith(`.${domain}`)) && (!best || domain.length > best.length)) {
+        best = { site, length: domain.length };
+      }
+    }
+  }
+  return best?.site ?? null;
+}
+
 /** The first domain as a URL to open in the browser. */
 export function siteHomeUrl(site: Site): string {
   return `https://${site.domains[0] ?? ""}/`;

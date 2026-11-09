@@ -268,6 +268,14 @@ export interface SavedFlow {
   updatedAt: number;
 }
 
+/** A page saved from the in-app browser; the URL is as it was shown (query kept, no #fragment). */
+export interface SavedPage {
+  id: number;
+  url: string;
+  name: string;
+  createdAt: number;
+}
+
 export interface CollectMethod {
   kind: "rule" | "flow";
   id: number;
@@ -528,6 +536,8 @@ export interface Commands {
   read_clipboard_url: { args: Record<string, never>; result: string | null };
   /** Replaces the clipboard contents with user-selected text. */
   copy_text: { args: { text: string }; result: null };
+  /** Opens an http(s) URL in the operating system's default browser; any other URL is rejected. */
+  open_external_url: { args: { url: string }; result: null };
   library_search: {
     args: { text: string | null; limit: number; offset: number };
     result: LibraryRow[];
@@ -699,6 +709,18 @@ export interface Commands {
     result: FlowReplayResult;
   };
   flow_replay_cancel: { args: Record<string, never>; result: null };
+  /** Every saved page, the first saved first. */
+  saved_page_list: { args: Record<string, never>; result: SavedPage[] };
+  /**
+   * Saves a page: http(s) only, the URL at most 2048 characters (the #fragment is dropped, the
+   * rest kept as given), the name trimmed to 1..=200 characters. A URL that is saved already
+   * returns its existing row.
+   */
+  saved_page_add: { args: { url: string; name: string }; result: SavedPage };
+  /** name as for saved_page_add; returns the updated row. */
+  saved_page_rename: { args: { id: number; name: string }; result: SavedPage };
+  /** Removes a saved page; one that is gone already is not an error. */
+  saved_page_remove: { args: { id: number }; result: null };
   /** Every source in id order. tzOffsetSeconds as in enqueue_urls (automatic checks use the newest one passed). */
   sources_list: { args: { tzOffsetSeconds: number }; result: SourceRow[] };
   /**

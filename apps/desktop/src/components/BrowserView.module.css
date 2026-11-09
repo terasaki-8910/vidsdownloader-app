@@ -62,24 +62,59 @@
   outline: none;
 }
 
-.chip,
-.chipOn {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 10px;
-  margin-right: 6px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  color: var(--muted);
-  font-size: 12.5px;
-  white-space: nowrap;
+/* The toolbar's three groups are not boxes by default: the bar lays its children out in one row.
+   Below 1180px the bar wraps and the address field gets its own row (see the media query below). */
+.navGroup,
+.addrRow,
+.actionGroup {
+  display: contents;
 }
 
-.chipOn {
-  color: var(--accent-ink);
+/* The page actions inside the address field: the field's right padding shrinks to a 2px margin
+   around 28px buttons in the 32px inner height. */
+.addrWithTools {
+  padding-right: 2px;
+}
+
+.addrWithTools:focus-within {
+  border-color: var(--line-strong);
+}
+
+.addrWithTools:has(input:focus) {
+  border-color: var(--accent);
+}
+
+@media (max-width: 1180px) {
+  .bar {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .bar .navGroup {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-right: auto;
+  }
+
+  .bar .actionGroup {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .bar .addrRow {
+    order: 3;
+    flex: 1 0 100%;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .bar .addr {
+    margin: 0;
+  }
 }
 
 .flowRecordControl {
@@ -292,6 +327,71 @@
   color: var(--muted);
   font-size: 12.5px;
   text-align: right;
+}
+
+/* Saved pages above the sites: the site rows' look, with the "..." menu after the row. */
+.savedSection {
+  margin-bottom: 28px;
+}
+
+.savedItem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  padding-right: 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.savedItem:hover {
+  background: var(--hover);
+}
+
+.savedRow {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 32px 9em minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 10px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  font-size: 14px;
+}
+
+/* The rename field takes the name's and the URL's room. */
+.savedRename {
+  grid-column: 2 / -1;
+}
+
+/* A URL too long for its room keeps its start and its last characters; the middle is cut. */
+.middle {
+  display: flex;
+  min-width: 0;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: pre;
+}
+
+.middleHead {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.middleTail {
+  flex: none;
+}
+
+.savedError {
+  flex: 1 0 100%;
+  margin: 0;
+  padding: 0 8px 8px 52px;
+  color: var(--danger);
+  font-size: 12.5px;
 }
 
 .addSite {
@@ -856,31 +956,7 @@
   pointer-events: none;
 }
 
-/* The address field needs the room first: at 820px the full chip left it about
-   165px. Between 760px and 960px the chip shrinks to its icon (the text stays in
-   the tooltip and for screen readers); below 760px it is hidden, as in the sample. */
-@media (max-width: 960px) {
-  .chip,
-  .chipOn {
-    padding: 0 7px;
-  }
-
-  .chipText {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
-  }
-}
-
 @media (max-width: 760px) {
-  .chip,
-  .chipOn {
-    display: none;
-  }
-
   .start {
     padding: 20px 16px;
   }
@@ -892,6 +968,19 @@
 
   .siteHost {
     display: none;
+  }
+
+  .savedRow {
+    grid-template-columns: 32px minmax(0, 1fr);
+    row-gap: 2px;
+  }
+
+  .savedUrl {
+    grid-column: 2;
+  }
+
+  .savedRename {
+    grid-column: 2;
   }
 }
 

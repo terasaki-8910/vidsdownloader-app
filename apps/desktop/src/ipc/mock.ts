@@ -34,6 +34,7 @@ import type {
   LoginMethod,
   Preset,
   SavedFlow,
+  SavedPage,
   Settings,
   Site,
   SiteProbeReport,
@@ -137,6 +138,8 @@ let settings: Settings = {
 const jobs = new Map<number, JobRow>();
 let nextJobId = 17;
 export let lastCopiedText: string | null = null;
+/** The last URL "open in the default browser" was asked for (nothing is opened in the mock). */
+export let lastExternalUrl: string | null = null;
 /** tzOffsetSeconds passed with enqueue_urls, by job id; used to date the output
  *  path in local time like the real Rust side does. Seed rows do not go through
  *  enqueue_urls, so they fall back to UTC. */
@@ -962,6 +965,28 @@ function mockSteps(url: string, count: number): Flow["steps"] {
     steps.push({ ...steps[steps.length - 1], pattern: `main [data-mock-step='${steps.length + 1}']` });
   }
   return steps.slice(0, count).map((step) => ({ ...step, url }));
+}
+
+// Saved pages (the toolbar's star, the start page's list): empty, or the three sample pages
+// with #mockSaved=1 (see lib/debugHash.ts).
+const SAVED_PAGE_URL_MAX = 2048;
+const SAVED_PAGE_NAME_MAX = 200;
+let savedPages: SavedPage[] = readDebugHash().mockSaved
+  ? [
+      { name: "猫 · メディア", url: "https://x.com/search?q=%E7%8C%AB&src=typed_query&f=media" },
+      { name: "Blender 新しい順", url: "https://www.youtube.com/@BlenderFoundation/videos?view=0&sort=dd" },
+      { name: "ランキング 毎時", url: "https://www.nicovideo.jp/ranking/genre/all?term=hour" },
+    ].map((page, index) => ({ id: index + 1, ...page, createdAt: nowSeconds() - (3 - index) * 3600 }))
+  : [];
+let nextSavedPageId = savedPages.length + 1;
+
+function savedPageName(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("the name is empty");
+  if ([...trimmed].length > SAVED_PAGE_NAME_MAX) {
+    throw new Error(`the name is longer than ${SAVED_PAGE_NAME_MAX} characters`);
+  }
+  return trimmed;
 }
 
 const collectMethodsEmpty = readDebugHash().mockCollectMethods === "empty";
@@ -1997,6 +2022,10 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
       lastCopiedText = (args as Commands["copy_text"]["args"]).text;
       return null;
 
+    case "open_external_url":
+      lastExternalUrl = parseHttpUrl((args as Commands["open_external_url"]["args"]).url).toString();
+      return null;
+
     case "library_search": {
       const { text, limit, offset } = args as Commands["library_search"]["args"];
       const needle = text?.trim().toLowerCase();
@@ -2662,6 +2691,38 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
     }
 
     case "flow_replay_cancel":
+      return null;
+
+    case "saved_page_list":
+      return structuredClone(savedPages);
+
+    case "saved_page_add": {
+      const { url, name } = args as Commands["saved_page_add"]["args"];
+      const kept = url.trim().split("#")[0];
+      parseHttpUrl(kept);
+      if (/[\s\u0000-\u001f]/.test(kept)) throw new Error("the URL contains a space or a control character");
+      if ([...kept].length > SAVED_PAGE_URL_MAX) {
+        throw new Error(`the URL is longer than ${SAVED_PAGE_URL_MAX} characters`);
+      }
+      const cleanName = savedPageName(name);
+      const existing = savedPages.find((page) => page.url === kept);
+      if (existing) return structuredClone(existing);
+      const page: SavedPage = { id: nextSavedPageId++, url: kept, name: cleanName, createdAt: nowSeconds() };
+      savedPages = [...savedPages, page];
+      return structuredClone(page);
+    }
+
+    case "saved_page_rename": {
+      const { id, name } = args as Commands["saved_page_rename"]["args"];
+      const cleanName = savedPageName(name);
+      const page = savedPages.find((item) => item.id === id);
+      if (!page) throw new Error("saved page not found");
+      page.name = cleanName;
+      return structuredClone(page);
+    }
+
+    case "saved_page_remove":
+      savedPages = savedPages.filter((page) => page.id !== (args as Commands["saved_page_remove"]["args"]).id);
       return null;
 
     case "sources_list":
