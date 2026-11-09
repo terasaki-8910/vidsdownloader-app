@@ -1,15 +1,32 @@
 (() => {
   const MARK_CLASS = "vdl-collector-found";
   const BADGE_CLASS = "vdl-collector-badge";
+  const OFF_CLASS = "vdl-collector-off";
   const REVEAL_CLASS = "vdl-collector-reveal";
   const STYLE_ID = "vdl-collector-style";
+  const PICK_STYLE_ID = "vdl-collector-pick-style";
+  const PICK_BOX_ID = "vdl-collector-pick-box";
+  const PICK_LABEL_ID = "vdl-collector-pick-label";
   // The script is evaluated again for every call, so what must outlive one call lives on window:
   // the card last seen for each item URL, for reveal(), and the number given to each page
-  // image, so a later scan that finds more images keeps the earlier numbers.
+  // image, so a later scan that finds more images keeps the earlier numbers. The page never gets
+  // IPC, so what it wants to tell the app waits here until the app asks: toggles (badges clicked
+  // in the page) and the element picked in pick mode.
   const memory =
     window.__vdlCollectorMemory ||
     (window.__vdlCollectorMemory = { cards: new Map(), imagesPage: null, imageIndex: new Map() });
   if (!memory.imageIndex) memory.imageIndex = new Map();
+  // The item URLs the user has switched off; every other found item is selected.
+  if (!memory.unselected) memory.unselected = new Set();
+  // Badge clicks not yet taken by the app, in order: { url, selected }.
+  if (!memory.toggles) memory.toggles = [];
+  // The item URL each marked card stands for (an item can have several cards).
+  if (!memory.cardUrl) memory.cardUrl = new WeakMap();
+  // The last element-picker result, until takePick() hands it over; pickStop ends pick mode.
+  if (memory.pickResult === undefined) memory.pickResult = null;
+  if (memory.pickStop === undefined) memory.pickStop = null;
+  // At most this many badge clicks wait for the app (it takes them every half second).
+  const MAX_PENDING_TOGGLES = 2000;
   // The reserved shape of the group holding the page's own images (not inside links).
   const IMAGES_SHAPE = "{images}";
   // At most this many URLs of the best link group are listed under the images.
@@ -542,6 +559,10 @@
         outline: 2.5px solid #1E9E56 !important;
         outline-offset: 1px !important;
       }
+      .${MARK_CLASS}.${OFF_CLASS} {
+        outline: 2px dashed #8C8C8C !important;
+        outline-offset: 1px !important;
+      }
       .${MARK_CLASS}.${REVEAL_CLASS} {
         outline-width: 5px !important;
         outline-offset: 3px !important;
@@ -549,24 +570,43 @@
       .${BADGE_CLASS} {
         position: absolute !important;
         z-index: 2147483647 !important;
-        top: 4px !important;
-        left: 4px !important;
-        width: 20px !important;
-        height: 20px !important;
+        top: 6px !important;
+        left: 6px !important;
+        width: 24px !important;
+        height: 24px !important;
+        box-sizing: border-box !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: 0 none !important;
         border-radius: 50% !important;
         display: grid !important;
         place-items: center !important;
         background: #1E9E56 !important;
         color: #FFFFFF !important;
-        font: 700 14px/1 sans-serif !important;
-        pointer-events: none !important;
+        font: 700 15px/1 sans-serif !important;
+        pointer-events: auto !important;
+        cursor: pointer !important;
+        user-select: none !important;
+      }
+      .${BADGE_CLASS}::before {
+        content: "" !important;
+      }
+      .${BADGE_CLASS}[aria-checked="true"]::before {
+        content: "✓" !important;
+      }
+      .${BADGE_CLASS}[aria-checked="false"] {
+        background: rgba(255, 255, 255, 0.9) !important;
+        border: 2px solid #6A6A6A !important;
+      }
+      .${BADGE_CLASS}:hover {
+        box-shadow: 0 0 0 3px rgba(30, 158, 86, 0.35) !important;
       }
     `;
     (document.head || document.documentElement).appendChild(style);
   }
 
   function unmark(element) {
-    element.classList.remove(MARK_CLASS);
+    element.classList.remove(MARK_CLASS, OFF_CLASS);
     for (const badge of element.querySelectorAll(`:scope > .${BADGE_CLASS}`)) badge.remove();
     // Undo only what mark() changed: a static element made relative for the badge.
     if (element.dataset.vdlStatic === "1") {
@@ -575,10 +615,49 @@
     }
   }
 
-  function mark(element) {
+  // Draw a marked card as selected (green outline, check badge) or not (dashed grey outline,
+  // empty badge), by whether its item URL is in memory.unselected.
+  function paint(element) {
+    const url = memory.cardUrl.get(element);
+    if (url === undefined) return;
+    const selected = !memory.unselected.has(url);
+    element.classList.toggle(OFF_CLASS, !selected);
+    const badge = element.querySelector(`:scope > .${BADGE_CLASS}`);
+    if (!badge) return;
+    // The check is drawn by CSS, so the badge holds no text a title or an ad check could read.
+    badge.setAttribute("aria-checked", selected ? "true" : "false");
+  }
+
+  // The badge's click flips the item; the page's own handlers (the card's link included) must
+  // never see it, so the events are stopped on the badge and the click's default action is
+  // cancelled (see mark()).
+  function toggle(url) {
+    const nowSelected = memory.unselected.has(url);
+    if (nowSelected) memory.unselected.delete(url);
+    else memory.unselected.add(url);
+    memory.toggles.push({ url, selected: nowSelected });
+    if (memory.toggles.length > MAX_PENDING_TOGGLES) memory.toggles.splice(0, memory.toggles.length - MAX_PENDING_TOGGLES);
+    for (const element of document.querySelectorAll(`.${MARK_CLASS}`)) {
+      if (memory.cardUrl.get(element) === url) paint(element);
+    }
+  }
+
+  function mark(element, url) {
+    memory.cardUrl.set(element, url);
     element.classList.add(MARK_CLASS);
     // An image cannot hold the badge; its outline is enough.
-    if (element.tagName === "IMG" || element.querySelector(`:scope > .${BADGE_CLASS}`)) return;
+    if (element.tagName === "IMG") {
+      paint(element);
+      return;
+    }
+    // A scan keeps the badges it finds (a click needs the same element at press and release);
+    // a recycled card (virtualized lists) may stand for another item now.
+    const existing = element.querySelector(`:scope > .${BADGE_CLASS}`);
+    if (existing) {
+      existing.dataset.vdlUrl = url;
+      paint(element);
+      return;
+    }
     // The badge needs a positioned parent; never override a page's own positioning
     // (virtualized lists place their rows absolutely).
     if (getComputedStyle(element).position === "static") {
@@ -587,16 +666,61 @@
     }
     const badge = document.createElement("span");
     badge.className = BADGE_CLASS;
-    badge.textContent = "✓";
-    badge.setAttribute("aria-hidden", "true");
+    badge.setAttribute("role", "checkbox");
+    badge.dataset.vdlUrl = url;
+    for (const type of ["pointerdown", "pointerup", "mousedown", "mouseup"]) {
+      badge.addEventListener(type, (event) => event.stopPropagation(), true);
+    }
+    badge.addEventListener(
+      "click",
+      (event) => {
+        event.stopPropagation();
+        event.preventDefault();
+        const current = memory.cardUrl.get(element);
+        if (current !== undefined) toggle(current);
+      },
+      true,
+    );
     element.appendChild(badge);
+    paint(element);
   }
 
+  // The app's choice: the item URLs that are NOT selected. Cards already marked are redrawn.
+  // Clicks the app has not taken yet are newer than what it knows, so they are applied on top.
+  function setSelection(unselectedUrls) {
+    memory.unselected = new Set(Array.isArray(unselectedUrls) ? unselectedUrls : []);
+    for (const { url, selected } of memory.toggles) {
+      if (selected) memory.unselected.delete(url);
+      else memory.unselected.add(url);
+    }
+    let redrawn = 0;
+    for (const element of document.querySelectorAll(`.${MARK_CLASS}`)) {
+      paint(element);
+      redrawn += 1;
+    }
+    return { unselected: memory.unselected.size, redrawn };
+  }
+
+  // The badge clicks since the last call, oldest first.
+  function takeToggles() {
+    return memory.toggles.splice(0);
+  }
+
+  // Cards a scan did not mark again lose their badge too.
+  function dropStale(marked) {
+    for (const element of marked) if (!element.classList.contains(MARK_CLASS)) unmark(element);
+  }
+
+  // options: includeAds keeps ad cards in the result; mark: false leaves the page unmarked (the
+  // tray shows the videos that were played in the page, which have no cards in it).
   function scan(requestedShape, options) {
     const includeAds = Boolean(options?.includeAds);
+    const markCards = options?.mark !== false;
     ensureStyle();
-    // Unmark before measuring and measure everything before marking, so the page lays out once.
-    for (const element of document.querySelectorAll(`.${MARK_CLASS}`)) unmark(element);
+    // Take the outlines off before measuring and measure everything before marking, so the page
+    // lays out once. The badges stay (see mark()); those of cards no longer marked go at the end.
+    const marked = [...document.querySelectorAll(`.${MARK_CLASS}`)];
+    for (const element of marked) element.classList.remove(MARK_CLASS, OFF_CLASS);
 
     const links = candidateLinks();
     assignShapes(links);
@@ -650,14 +774,15 @@
 
     if (imagesChosen) {
       const items = [];
-      const toMark = new Set();
+      const toMark = new Map();
       for (const { img, card, url, index } of images.found) {
         const title = (img.getAttribute("alt") || "").replace(/\s+/g, " ").trim();
         items.push({ url, title, thumbnail: url, index });
-        toMark.add(card);
+        if (!toMark.has(card)) toMark.set(card, url);
         memory.cards.set(url, card);
       }
-      for (const card of toMark) mark(card);
+      if (markCards) for (const [card, url] of toMark) mark(card, url);
+      dropStale(marked);
       // The best link group goes along, folded under the images (「ほかのリンク」).
       const bestLinks = ranked.find((group) => group !== imageGroup);
       const otherLinks = bestLinks
@@ -684,10 +809,11 @@
         continue;
       }
       items.push({ url, title: cardTitle(entry.anchors, entry.cards[0]), thumbnail: cardThumbnail(entry.anchors, entry.cards[0]) });
-      toMark.push(...entry.cards);
+      for (const card of entry.cards) toMark.push([card, url]);
       memory.cards.set(url, entry.cards[0]);
     }
-    for (const card of toMark) mark(card);
+    if (markCards) for (const [card, url] of toMark) mark(card, url);
+    dropStale(marked);
     return { groups, shape: chosen, items, ads, page: pageFacts(), otherLinks: null };
   }
 
@@ -766,6 +892,297 @@
     return { ...after, moved: after.top !== before.top };
   }
 
+  // --- The element picker ------------------------------------------------------------------
+  // Pick mode lets the user point at something on the page: a box follows the pointer and says
+  // what the app would take from there (a video, a link and the cards shaped like it, an image).
+  // One click on one of those ends it and leaves the answer in memory.pickResult for takePick();
+  // a click on nothing is recorded as { kind: "none" } and pick mode stays on; Escape ends it
+  // with { kind: "cancel" }.
+
+  const PICK_BLUE = "#1F63D6";
+  // How long the page's link statistics may be reused while the pointer moves, and how soon an
+  // unknown link may trigger a fresh pass (a feed that grew since).
+  const PICK_STATS_MS = 1500;
+  const PICK_REFRESH_MS = 250;
+  // The label's words, by the app's language.
+  const PICK_TEXT = {
+    ja: {
+      video: "動画",
+      link: (shape, count) => `リンク · ${shape} · 同じ形 ${count} 件`,
+      image: "画像",
+      none: "動画もリンクも見つかりません",
+    },
+    en: {
+      video: "Video",
+      link: (shape, count) => `Link · ${shape} · ${count} of the same shape`,
+      image: "Image",
+      none: "No video or link here",
+    },
+  };
+
+  // A <video> whose rectangle holds the point: players lay controls over the video, so what is
+  // under the pointer is not the video. The smallest such video wins.
+  function videoAt(x, y) {
+    let best = null;
+    let bestArea = Infinity;
+    for (const video of document.querySelectorAll("video")) {
+      const rect = video.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) continue;
+      if (x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom) continue;
+      if (rect.width * rect.height < bestArea) {
+        best = video;
+        bestArea = rect.width * rect.height;
+      }
+    }
+    return best;
+  }
+
+  // The topmost element at the point that is the page's own: the selection badges sit over the
+  // card, so pointing at one means pointing at what is under it.
+  function pageElementAt(x, y) {
+    for (const element of document.elementsFromPoint(x, y)) {
+      if (!element.classList.contains(BADGE_CLASS)) return element;
+    }
+    return null;
+  }
+
+  // Every candidate link with its shape and card, and how many distinct URLs have each shape.
+  function linkStats() {
+    const links = candidateLinks();
+    assignShapes(links);
+    const cards = cardsFor(links);
+    const byAnchor = new Map();
+    const urlsByShape = new Map();
+    links.forEach((link, index) => {
+      byAnchor.set(link.anchor, { link, card: cards[index] });
+      if (!urlsByShape.has(link.shape)) urlsByShape.set(link.shape, new Set());
+      urlsByShape.get(link.shape).add(link.url);
+    });
+    return { time: Date.now(), byAnchor, urlsByShape };
+  }
+
+  function startPick(language) {
+    if (memory.pickStop) memory.pickStop();
+    memory.pickResult = null;
+    const words = PICK_TEXT[language === "en" ? "en" : "ja"];
+    let stats = null;
+    let last = null;
+    let current = null;
+
+    const style = document.createElement("style");
+    style.id = PICK_STYLE_ID;
+    style.textContent = `html *, html .${BADGE_CLASS} { cursor: crosshair !important; }`;
+    const box = document.createElement("div");
+    box.id = PICK_BOX_ID;
+    box.style.cssText = [
+      "position: fixed",
+      "display: none",
+      "box-sizing: border-box",
+      "pointer-events: none",
+      `border: 2px solid ${PICK_BLUE}`,
+      "background: rgba(31, 99, 214, 0.10)",
+      "border-radius: 4px",
+      "margin: 0",
+      "z-index: 2147483647",
+    ].join(" !important; ") + " !important";
+    const label = document.createElement("div");
+    label.id = PICK_LABEL_ID;
+    label.style.cssText = [
+      "position: fixed",
+      "display: none",
+      "box-sizing: border-box",
+      "pointer-events: none",
+      `background: ${PICK_BLUE}`,
+      "color: #FFFFFF",
+      "font: 600 12px/1.5 system-ui, sans-serif",
+      "padding: 2px 6px",
+      "border-radius: 3px",
+      "margin: 0",
+      "white-space: nowrap",
+      "overflow: hidden",
+      "text-overflow: ellipsis",
+      "max-width: calc(100vw - 8px)",
+      "z-index: 2147483647",
+    ].join(" !important; ") + " !important";
+    (document.head || document.documentElement).appendChild(style);
+    document.documentElement.append(box, label);
+
+    function statsFor(anchor) {
+      if (!stats) stats = linkStats();
+      let entry = stats.byAnchor.get(anchor);
+      const age = Date.now() - stats.time;
+      if ((!entry && age > PICK_REFRESH_MS) || age > PICK_STATS_MS) {
+        stats = linkStats();
+        entry = stats.byAnchor.get(anchor);
+      }
+      return entry ? { entry, urlsByShape: stats.urlsByShape } : null;
+    }
+
+    // What is at the point, in order: a video, a link, a media-sized image, nothing.
+    function classify(x, y) {
+      const video = videoAt(x, y);
+      if (video) return { kind: "video", target: video, video };
+      const under = pageElementAt(x, y);
+      if (!under) return null;
+      const anchor = under.closest("a[href]");
+      const found = anchor ? statsFor(anchor) : null;
+      if (found) {
+        const { link, card } = found.entry;
+        return { kind: "link", target: card, url: link.url, shape: link.shape, count: found.urlsByShape.get(link.shape).size };
+      }
+      if (under.tagName === "IMG" && isMediaBox(imageBox(under))) {
+        return { kind: "image", target: under, url: pageImageUrl(under) };
+      }
+      return { kind: "none", target: under };
+    }
+
+    function labelText(info) {
+      if (info.kind === "video") return words.video;
+      if (info.kind === "link") return words.link(info.shape, info.count);
+      if (info.kind === "image") return words.image;
+      return words.none;
+    }
+
+    function draw() {
+      if (!current) {
+        box.style.setProperty("display", "none", "important");
+        label.style.setProperty("display", "none", "important");
+        return;
+      }
+      const rect = current.target.getBoundingClientRect();
+      for (const [name, value] of [
+        ["display", "block"],
+        ["left", `${rect.left}px`],
+        ["top", `${rect.top}px`],
+        ["width", `${rect.width}px`],
+        ["height", `${rect.height}px`],
+      ]) {
+        box.style.setProperty(name, value, "important");
+      }
+      label.textContent = labelText(current);
+      label.style.setProperty("display", "block", "important");
+      const labelWidth = label.offsetWidth;
+      const labelHeight = label.offsetHeight;
+      const viewWidth = document.documentElement.clientWidth || window.innerWidth;
+      // Above the box; inside its top-left corner when there is no room above.
+      const above = rect.top - labelHeight >= 0;
+      const top = above ? rect.top - labelHeight : Math.max(rect.top, 0) + 4;
+      const left = Math.max(0, Math.min(above ? rect.left : rect.left + 4, viewWidth - labelWidth));
+      label.style.setProperty("left", `${left}px`, "important");
+      label.style.setProperty("top", `${top}px`, "important");
+    }
+
+    function update() {
+      if (!last) return;
+      current = classify(last.x, last.y);
+      draw();
+    }
+
+    function pointOf(event) {
+      // A click made by script has no position; the last pointer position stands in for it.
+      if (last && event.clientX === 0 && event.clientY === 0) return last;
+      return { x: event.clientX, y: event.clientY };
+    }
+
+    function swallow(event) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+
+    function onMove(event) {
+      last = { x: event.clientX, y: event.clientY };
+      update();
+    }
+
+    // The page moves under a still pointer when it scrolls or the window is resized.
+    function onResize() {
+      update();
+    }
+
+    let scrollFrame = 0;
+    function onScroll() {
+      if (scrollFrame) return;
+      scrollFrame = requestAnimationFrame(() => {
+        scrollFrame = 0;
+        update();
+      });
+    }
+
+    function onClick(event) {
+      swallow(event);
+      const point = pointOf(event);
+      const info = classify(point.x, point.y);
+      if (!info) {
+        memory.pickResult = { kind: "cancel" };
+        stop();
+        return;
+      }
+      if (info.kind === "none") {
+        // Nothing to take there: say so and wait for another press.
+        memory.pickResult = { kind: "none" };
+        return;
+      }
+      const rect = info.target.getBoundingClientRect();
+      const videos = info.video ? [...document.querySelectorAll("video")] : [];
+      memory.pickResult = {
+        kind: info.kind,
+        url:
+          info.kind === "video"
+            ? httpUrl(info.video.currentSrc) || httpUrl(info.video.getAttribute("src"))
+            : info.url ?? null,
+        shape: info.kind === "link" ? info.shape : null,
+        count: info.kind === "link" ? info.count : null,
+        videoIndex: info.video ? videos.indexOf(info.video) : null,
+        rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+      };
+      stop();
+    }
+
+    function onKey(event) {
+      if (event.key !== "Escape") return;
+      swallow(event);
+      memory.pickResult = { kind: "cancel" };
+      stop();
+    }
+
+    const swallowed = ["pointerdown", "pointerup", "mousedown", "mouseup"];
+    function stop() {
+      window.removeEventListener("mousemove", onMove, true);
+      window.removeEventListener("click", onClick, true);
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onResize, true);
+      for (const type of swallowed) window.removeEventListener(type, swallow, true);
+      if (scrollFrame) cancelAnimationFrame(scrollFrame);
+      style.remove();
+      box.remove();
+      label.remove();
+      if (memory.pickStop === stop) memory.pickStop = null;
+    }
+
+    window.addEventListener("mousemove", onMove, true);
+    window.addEventListener("click", onClick, true);
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onResize, true);
+    for (const type of swallowed) window.addEventListener(type, swallow, true);
+    memory.pickStop = stop;
+    return { picking: true };
+  }
+
+  // Ends pick mode without a result (the app's stop button, the tray closing, a page change).
+  function stopPick() {
+    if (memory.pickStop) memory.pickStop();
+    return { picking: false };
+  }
+
+  // The last pick, once; null until something was picked (or after it was taken).
+  function takePick() {
+    const result = memory.pickResult;
+    memory.pickResult = null;
+    return result;
+  }
+
   // Scroll an item's card into view and flash its outline. A card the page has dropped since
   // (virtualized lists remove what scrolled away) is looked up again by its link.
   function reveal(url) {
@@ -793,6 +1210,10 @@
   }
 
   function clear() {
+    if (memory.pickStop) memory.pickStop();
+    memory.pickResult = null;
+    memory.unselected = new Set();
+    memory.toggles = [];
     for (const element of document.querySelectorAll(`.${MARK_CLASS}`)) unmark(element);
     for (const element of document.querySelectorAll(`.${REVEAL_CLASS}`)) element.classList.remove(REVEAL_CLASS);
     memory.cards.clear();
@@ -801,5 +1222,17 @@
     document.getElementById(STYLE_ID)?.remove();
   }
 
-  window.__vdlCollector = { scan, step, scrollInfo, reveal, clear, pageFacts };
+  window.__vdlCollector = {
+    scan,
+    step,
+    scrollInfo,
+    reveal,
+    clear,
+    pageFacts,
+    setSelection,
+    takeToggles,
+    startPick,
+    stopPick,
+    takePick,
+  };
 })();

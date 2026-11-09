@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  Crosshair,
   Globe,
   KeyRound,
   LayoutGrid,
@@ -38,6 +39,30 @@ import styles from "./BrowserView.module.css";
 /** How long a loaded page is left alone before an asked-for 集める starts (pages that draw late). */
 const COLLECT_SETTLE_MS = 500;
 const FLOW_MISMATCH_PREFIX = "flow-step-mismatch:";
+/** The tray's checks go to the page's badges at most this often. */
+const SELECTION_SYNC_MS = 150;
+
+/** Where the element picker is: not picking, waiting for a press in the page, or looking for a pressed video's stream. */
+type PickPhase = "off" | "active" | "finding";
+
+/**
+ * A choice of group and checks made by the picker, applied once the tray lists that group: every
+ * item is checked (`only` null) or only these URLs are.
+ */
+interface PickSelection {
+  shape: string;
+  only: string[] | null;
+}
+
+/** True once `state` lists the planned group, with the items the plan names (any, when it names none). */
+function pickSelectionReady(plan: PickSelection, state: CollectState): boolean {
+  if (state.shape !== plan.shape || state.items.length === 0) return false;
+  return plan.only === null || plan.only.every((url) => state.items.some((item) => item.url === url));
+}
+
+function pickSelectionChecks(plan: PickSelection, state: CollectState): Record<string, boolean> {
+  return Object.fromEntries(state.items.map((item) => [item.url, plan.only === null || plan.only.includes(item.url)]));
+}
 
 interface BrowserViewProps {
   /** Opens Settings > Sites (to add a site). */
@@ -68,6 +93,15 @@ export function BrowserView({ onOpenSites }: BrowserViewProps) {
   const [finishing, setFinishing] = useState(false);
   const [collect, setCollect] = useState<CollectState | null>(null);
   const [selectedUrls, setSelectedUrls] = useState<Record<string, boolean>>({});
+  // The element picker ("pick from the page"): where it is, the link that was pressed (waiting for
+  // "all of this shape" or "just this one"), and whether a pressed video's stream never showed.
+  const [pickPhase, setPickPhase] = useState<PickPhase>("off");
+  const [pickedLink, setPickedLink] = useState<{ url: string; shape: string; count: number } | null>(null);
+  const [pickNotFound, setPickNotFound] = useState(false);
+  const pickSelection = useRef<PickSelection | null>(null);
+  const latestCollect = useRef<CollectState | null>(null);
+  const lastSentUnselected = useRef("");
+  const chooseGroupRef = useRef<(shape: string, only: string[] | null) => Promise<void>>(async () => {});
   // Items the page has dropped since they were found (virtualized lists), so "show on page" is off.
   const [goneUrls, setGoneUrls] = useState<Record<string, true>>({});
   const [showRuleForm, setShowRuleForm] = useState(false);
@@ -211,8 +245,14 @@ ${collect.shape}` : null;
   useEffect(
     () =>
       ipc.on("collect-state", (state) => {
+        latestCollect.current = state;
         setCollect(state);
+        // A group the picker asked for gets its checks as soon as the tray lists it.
+        const asked = pickSelection.current;
+        const plan = asked !== null && pickSelectionReady(asked, state) ? asked : null;
+        if (plan) pickSelection.current = null;
         setSelectedUrls((previous) => {
+          if (plan) return pickSelectionChecks(plan, state);
           const next: Record<string, boolean> = {};
           for (const item of state.items) next[item.url] = previous[item.url] ?? true;
           return next;
@@ -220,6 +260,86 @@ ${collect.shape}` : null;
       }),
     [],
   );
+
+  // Badges clicked in the page (the app polls it every half second): the tray's checks follow.
+  useEffect(
+    () =>
+      ipc.on("collect-toggles", ({ toggles }) => {
+        setSelectedUrls((previous) => {
+          const next = { ...previous };
+          for (const toggle of toggles) next[toggle.url] = toggle.selected;
+          return next;
+        });
+      }),
+    [],
+  );
+
+  useEffect(
+    () =>
+      ipc.on("collect-pick", (event) => {
+        switch (event.kind) {
+          case "active":
+            setPickedLink(null);
+            setPickNotFound(false);
+            setPickPhase("active");
+            break;
+          case "ended":
+            setPickPhase("off");
+            break;
+          case "finding":
+            setPickNotFound(false);
+            setPickPhase("finding");
+            break;
+          case "link":
+            setPickPhase("off");
+            setPickedLink({ url: event.url, shape: event.shape, count: event.count });
+            break;
+          case "image":
+            setPickPhase("off");
+            void chooseGroupRef.current(IMAGES_SHAPE, [event.url]);
+            break;
+          case "video":
+            setPickPhase("off");
+            void chooseGroupRef.current(PLAYED_SHAPE, event.urls);
+            break;
+          case "videoNotFound":
+            setPickPhase("off");
+            setPickNotFound(true);
+            break;
+        }
+      }),
+    [],
+  );
+
+  // The tray's checks go to the page's badges: the items that are not checked, a moment after the
+  // last change. A list that has unchecked items is sent again with every state, since a page
+  // that was loaded again has forgotten it.
+  useEffect(() => {
+    if (!collect) return undefined;
+    const unselected = collect.items.filter((item) => selectedUrls[item.url] === false).map((item) => item.url);
+    const timer = window.setTimeout(() => {
+      if (unselected.length === 0 && lastSentUnselected.current === "") return;
+      lastSentUnselected.current = unselected.join("\n");
+      void ipc.call("collect_set_selection", { unselected }).catch(() => {});
+    }, SELECTION_SYNC_MS);
+    return () => window.clearTimeout(timer);
+  }, [collect, selectedUrls]);
+
+  // A pressed link or a missing video belongs to the page it was pressed on.
+  useEffect(() => {
+    setPickedLink(null);
+    setPickNotFound(false);
+  }, [browser.url]);
+
+  // The picker waits for a press in the page; Escape in the page ends it there, and here too.
+  useEffect(() => {
+    if (pickPhase !== "active") return undefined;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") void stopPick();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [pickPhase]);
 
   useEffect(
     () =>
@@ -248,13 +368,14 @@ ${collect.shape}` : null;
   // navigation in the meantime restarts the wait; a page of another site never starts it.
   useEffect(() => {
     startCollectRef.current = startCollect;
+    chooseGroupRef.current = chooseGroup;
   });
 
   // The mock has already opened the requested page; start collecting once BrowserView
   // receives it so screenshot URLs need no scripted click.
   useEffect(() => {
     const debug = readDebugHash();
-    if (!usesMockIpc || !(debug.mockCollect || debug.mockScroll) || debugCollectApplied.current || !browser.url || browser.loading) return;
+    if (!usesMockIpc || !(debug.mockCollect || debug.mockScroll || debug.mockPick) || debugCollectApplied.current || !browser.url || browser.loading) return;
     debugCollectApplied.current = true;
     void startCollectRef.current();
   }, [browser.loading, browser.url]);
@@ -462,6 +583,56 @@ ${collect.shape}` : null;
     }
   }
 
+  /** The group select: the person's own choice, which also drops a pick still waiting to be checked. */
+  function chooseShape(shape: string) {
+    pickSelection.current = null;
+    void selectShape(shape);
+  }
+
+  /**
+   * Chooses a group the way the group select does and checks `only` of its items (every item when
+   * null). A group that is chosen and listed already needs no new choice; otherwise the checks wait
+   * for the group's items to arrive.
+   */
+  async function chooseGroup(shape: string, only: string[] | null) {
+    const plan: PickSelection = { shape, only };
+    const latest = latestCollect.current;
+    if (latest && pickSelectionReady(plan, latest)) {
+      pickSelection.current = null;
+      setSelectedUrls(pickSelectionChecks(plan, latest));
+      return;
+    }
+    pickSelection.current = plan;
+    await selectShape(shape);
+  }
+
+  async function startPick() {
+    setPickedLink(null);
+    setPickNotFound(false);
+    try {
+      await ipc.call("collect_pick_start", { language: settings?.language ?? "ja" });
+      setLocalError(null);
+    } catch (error) {
+      setLocalError(errorMessage(error));
+    }
+  }
+
+  async function stopPick() {
+    try {
+      await ipc.call("collect_pick_stop", {});
+    } catch (error) {
+      setLocalError(errorMessage(error));
+    }
+  }
+
+  /** The pressed link's two choices: every link of its shape, or only that one. */
+  async function collectPickedLink(onlyThis: boolean) {
+    if (!pickedLink) return;
+    const link = pickedLink;
+    setPickedLink(null);
+    await chooseGroup(link.shape, onlyThis ? [link.url] : null);
+  }
+
   async function reloadFind() {
     setReloadFindStatus(null);
     setReloadFinding(true);
@@ -480,6 +651,12 @@ ${collect.shape}` : null;
       if (collect) await ipc.call("collect_close", {});
       if (replaying) await ipc.call("flow_replay_cancel", {});
       setCollect(null);
+      latestCollect.current = null;
+      pickSelection.current = null;
+      lastSentUnselected.current = "";
+      setPickPhase("off");
+      setPickedLink(null);
+      setPickNotFound(false);
       setSelectedUrls({});
       setGoneUrls({});
       setShowRuleForm(false);
@@ -737,15 +914,26 @@ ${collect.shape}` : null;
           </div>
           ) : (
             usesMockIpc &&
-            (collect ? (
+            (collect && collect.items.length > 0 ? (
               <div className={styles.mockGrid} aria-hidden>
-                {collect.items.map((item) => (
+                {collect.items.map((item, index) => (
                   <div className={styles.mockCard} key={item.url}>
                     <span className={styles.mockCheck}>
                       <Check size={13} />
                     </span>
                     <div className={styles.mockThumb}>{item.index != null && <img src={item.url} alt="" />}</div>
                     {(item.index == null || item.title) && <strong>{item.title || item.url}</strong>}
+                    {pickPhase === "active" && index === 2 && (
+                      <>
+                        <span className={styles.pickOutline} />
+                        <span className={styles.pickTag}>
+                          {t.browser.pickLabel(
+                            collect.shape ?? "",
+                            collect.groups.find((group) => group.shape === collect.shape)?.count ?? collect.items.length,
+                          )}
+                        </span>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
@@ -775,22 +963,32 @@ ${collect.shape}` : null;
                 )}
               </div>}
               {collect && collect.groups.length > 0 && collect.shape && (
-                <select
-                  className={styles.groupSelect}
-                  value={collect.shape}
-                  aria-label={t.browser.matchPattern}
-                  onChange={(e) => void selectShape(e.target.value)}
-                >
-                  {collect.groups.map((group) => (
-                    <option key={group.shape} value={group.shape}>
-                      {group.shape === IMAGES_SHAPE
-                        ? t.browser.imagesGroup(group.count)
-                        : group.shape === PLAYED_SHAPE
-                          ? t.browser.playedGroup(group.count)
-                        : t.browser.groupOption(group.shape, group.count)}
-                    </option>
-                  ))}
-                </select>
+                <div className={styles.groupRow}>
+                  <select
+                    className={styles.groupSelect}
+                    value={collect.shape}
+                    aria-label={t.browser.matchPattern}
+                    onChange={(e) => chooseShape(e.target.value)}
+                  >
+                    {collect.groups.map((group) => (
+                      <option key={group.shape} value={group.shape}>
+                        {group.shape === IMAGES_SHAPE
+                          ? t.browser.imagesGroup(group.count)
+                          : group.shape === PLAYED_SHAPE
+                            ? t.browser.playedGroup(group.count)
+                          : t.browser.groupOption(group.shape, group.count)}
+                      </option>
+                    ))}
+                  </select>
+                  <IconButton
+                    size="sm"
+                    label={t.browser.pickButton}
+                    pressed={pickPhase === "active"}
+                    onClick={() => void (pickPhase === "active" ? stopPick() : startPick())}
+                  >
+                    <Crosshair size={16} aria-hidden />
+                  </IconButton>
+                </div>
               )}
               {collect && <div className={styles.reloadFindLine}>
                 <button
@@ -817,6 +1015,46 @@ ${collect.shape}` : null;
               {showXNotice && <p className={styles.xNotice}>{t.browser.xCollectWarning}</p>}
               {collect?.error && <p className={styles.collectError}>{t.browser.collectFailed(collect.error)}</p>}
             </div>
+
+            {collect && pickPhase !== "off" && (
+              <div className={styles.trayNote}>
+                <div className={styles.pickBox} role="status">
+                  <span>{pickPhase === "active" ? t.browser.pickActive : t.browser.pickFinding}</span>
+                  {pickPhase === "active" && (
+                    <button type="button" className={styles.textButton} onClick={() => void stopPick()}>
+                      {t.browser.pickCancel}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {collect && pickPhase === "off" && pickedLink && (
+              <div className={styles.trayNote}>
+                <div className={styles.pickBox}>
+                  <p className={styles.pickResult}>
+                    {t.browser.pickedLead}
+                    <span className={styles.pickShape}>{pickedLink.shape}</span>
+                  </p>
+                  <div className={styles.pickActions}>
+                    <button type="button" className={styles.secondary} onClick={() => void collectPickedLink(false)}>
+                      {t.browser.pickAll(pickedLink.count)}
+                    </button>
+                    <button type="button" className={styles.ghost} onClick={() => void collectPickedLink(true)}>
+                      {t.browser.pickOnly}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {collect && pickPhase === "off" && pickNotFound && (
+              <div className={styles.trayNote}>
+                <p className={styles.adsNote} role="status">
+                  {t.browser.pickNotFound}
+                </p>
+              </div>
+            )}
 
             {savedFlows.length > 0 && (
               <section className={styles.savedFlowSection} aria-labelledby="saved-flows-title">
@@ -967,7 +1205,19 @@ ${collect.shape}` : null;
             )}
 
             {collect && (collect.items.length === 0 ? (
-              <p className={styles.collectEmpty}>{playedChosen ? t.browser.playedEmpty : t.browser.collectEmpty}</p>
+              <div className={styles.emptyArea}>
+                <p>{playedChosen ? t.browser.playedEmpty : t.browser.collectEmpty}</p>
+                <p>{t.browser.pickEmptyHint}</p>
+                <button
+                  type="button"
+                  className={styles.secondary}
+                  disabled={pickPhase !== "off"}
+                  onClick={() => void startPick()}
+                >
+                  <Crosshair size={16} aria-hidden />
+                  {t.browser.pickButton}
+                </button>
+              </div>
             ) : imagesChosen ? (
               <PageImagesTray
                 items={collect.items}

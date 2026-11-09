@@ -84,6 +84,8 @@ const listeners: { [K in keyof Events]: Set<(payload: Events[K]) => void> } = {
   "tools-progress": new Set(),
   "browser-state": new Set(),
   "collect-state": new Set(),
+  "collect-toggles": new Set(),
+  "collect-pick": new Set(),
   "flow-record-progress": new Set(),
   "flow-progress": new Set(),
   "sites-updated": new Set(),
@@ -1244,9 +1246,21 @@ const PLAYED_COLLECT: MockCollectPage = {
   },
 };
 
+// #mockPick=empty: the same page, with no video played yet (the played-videos group is empty).
+const PLAYED_EMPTY_COLLECT: MockCollectPage = {
+  groups: [
+    { shape: "/related/{id}", count: 1 },
+    { shape: PLAYED_SHAPE, count: 0 },
+  ],
+  defaultShape: PLAYED_SHAPE,
+  itemsFor: (shape) => (shape === PLAYED_SHAPE ? [] : SAMPLE_COLLECT_ITEMS.slice(0, 1)),
+  adsExcluded: 0,
+  page: PLAYED_COLLECT.page,
+};
+
 function mockCollectFor(url: string | null): MockCollectPage {
   if (url === IMAGES_PAGE_URL) return IMAGES_COLLECT;
-  if (url === PLAYED_PAGE_URL) return PLAYED_COLLECT;
+  if (url === PLAYED_PAGE_URL) return readDebugHash().mockPick === "empty" ? PLAYED_EMPTY_COLLECT : PLAYED_COLLECT;
   return VIDEOS_COLLECT;
 }
 
@@ -1268,6 +1282,28 @@ const MOCK_COLLECT_CAP = 2000;
 let collectTicks = 0;
 /** #mockScroll puts only the first collect_start into its state; buttons act normally after that. */
 let mockScrollApplied = false;
+/** The same for #mockPick: only the first collect_start is put into the picker's state. */
+let mockPickApplied = false;
+/** How long the mock waits, once picking starts without #mockPick, before it "presses" a link. */
+const MOCK_PICK_DELAY_MS = 2500;
+let mockPickTimer: ReturnType<typeof setTimeout> | null = null;
+
+function emitPick(event: Events["collect-pick"]): void {
+  emit("collect-pick", event);
+}
+
+function stopMockPickTimer(): void {
+  if (mockPickTimer) clearTimeout(mockPickTimer);
+  mockPickTimer = null;
+}
+
+/** What pressing the third card of the mock page does: a link pick, as the page would report it. */
+function mockLinkPick(): Events["collect-pick"] | null {
+  const item = collectState?.items[2];
+  if (!collectState?.shape || !item) return null;
+  const count = collectState.groups.find((group) => group.shape === collectState?.shape)?.count ?? collectState.items.length;
+  return { kind: "link", url: item.url, shape: collectState.shape, count };
+}
 
 /** `items` followed by made-up videos up to `total`, so a capped session holds what it says. */
 function padCollectItems(items: CollectItem[], total: number): CollectItem[] {
@@ -1407,10 +1443,10 @@ function parseHttpUrl(url: string): URL {
       siteId: null,
       accountId: null,
     };
-  } else if (hash.mockCollect || hash.mockScroll) {
+  } else if (hash.mockCollect || hash.mockScroll || hash.mockPick) {
     const url = hash.mockCollect === "images"
       ? IMAGES_PAGE_URL
-      : hash.mockCollect === "played"
+      : hash.mockCollect === "played" || hash.mockPick === "empty"
         ? PLAYED_PAGE_URL
         : "https://www.youtube.com/@BlenderFoundation/videos";
     const siteId = siteIdForUrl(url);
@@ -2354,6 +2390,20 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
         // "running" is left running so a screenshot of it stays put.
         return null;
       }
+      const pickState = readDebugHash().mockPick;
+      if (pickState && !mockPickApplied) {
+        mockPickApplied = true;
+        // Starting to pick stops a running scroll, as it does in the app.
+        collectState.running = false;
+        collectState.stopReason = pickState === "empty" ? "end" : "stopped";
+        emitCollect();
+        if (pickState === "active") emitPick({ kind: "active" });
+        if (pickState === "picked") {
+          const pick = mockLinkPick();
+          if (pick) emitPick(pick);
+        }
+        return null;
+      }
       emitCollect();
       scheduleCollectTick();
       return null;
@@ -2408,11 +2458,43 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
 
     case "collect_close":
       stopCollectTimer();
+      stopMockPickTimer();
       collectState = null;
       return null;
 
     case "collect_reveal":
       return collectState?.items.some((item) => item.url === (args as Commands["collect_reveal"]["args"]).url) ?? false;
+
+    // The mock page has no badges to keep in step; the selection is only accepted.
+    case "collect_set_selection":
+      return null;
+
+    case "collect_pick_start": {
+      if (!collectState) throw new Error("no collect session is open on the current page");
+      if (collectState.running) {
+        collectState.running = false;
+        collectState.stopReason = "stopped";
+        stopCollectTimer();
+        emitCollect();
+      }
+      stopMockPickTimer();
+      emitPick({ kind: "active" });
+      // There is no page to press in the mock: after a moment it "presses" the third card,
+      // unless #mockPick holds the screenshot state still.
+      if (!readDebugHash().mockPick) {
+        mockPickTimer = setTimeout(() => {
+          mockPickTimer = null;
+          const pick = mockLinkPick();
+          if (pick) emitPick(pick);
+        }, MOCK_PICK_DELAY_MS);
+      }
+      return null;
+    }
+
+    case "collect_pick_stop":
+      stopMockPickTimer();
+      emitPick({ kind: "ended" });
+      return null;
 
     case "collect_save_rule":
       if (!collectState?.shape) throw new Error("no link shape is selected");

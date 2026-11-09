@@ -947,6 +947,37 @@ impl BrowserManager {
         }
     }
 
+    /// Adds the media file a pressed `<video>` points at to the visible page's played streams, as
+    /// if its request had been seen, so it is reduced and listed like any other. Returns
+    /// whether the address is one the played list can hold (an HLS or DASH manifest, an MP4,
+    /// WebM or MOV file) on the page that is showing.
+    pub fn observe_picked_media(self: &Arc<Self>, page_url: &str, url: &str) -> bool {
+        let generation = {
+            let session = lock_recover(&self.session);
+            if !session.page_open
+                || session.event.url.as_deref() != Some(page_url)
+                || session.played.page_url.as_deref() != Some(page_url)
+            {
+                return false;
+            }
+            session.generation
+        };
+        self.observe_media_candidate(
+            generation,
+            MediaCandidate {
+                url: url.to_owned(),
+                status: 200,
+                content_type: None,
+                content_length: None,
+            },
+        );
+        lock_recover(&self.session)
+            .played
+            .candidates
+            .iter()
+            .any(|candidate| candidate.url == url)
+    }
+
     pub fn played_media(&self, page_url: &str) -> Vec<PlayedMedia> {
         let session = lock_recover(&self.session);
         if session.page_open && session.played.page_url.as_deref() == Some(page_url) {

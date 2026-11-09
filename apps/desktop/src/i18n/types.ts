@@ -453,6 +453,26 @@ export interface Translations {
     otherLinks: (count: number) => string;
     collectEmpty: string;
     playedEmpty: string;
+    /** The tray's button (and the pressed head button's name): pick a video or item by pressing it in the page. */
+    pickButton: string;
+    /** Under the empty-state line: the way out. */
+    pickEmptyHint: string;
+    /** The banner while pick mode is on. */
+    pickActive: string;
+    /** The banner's button that ends pick mode. */
+    pickCancel: string;
+    /** The banner while a pressed video's stream is being looked for. */
+    pickFinding: string;
+    /** The label the mock page draws on the card the picker points at (the real page draws its own). */
+    pickLabel: (shape: string, count: number) => string;
+    /** Before the shape of the link that was pressed. */
+    pickedLead: string;
+    /** The button that collects every link of the pressed link's shape. */
+    pickAll: (count: number) => string;
+    /** The button that collects only the pressed link. */
+    pickOnly: string;
+    /** The line when no new stream showed for a pressed video. */
+    pickNotFound: string;
     addCollected: (count: number) => string;
     collectedAdded: string;
     saveRule: string;

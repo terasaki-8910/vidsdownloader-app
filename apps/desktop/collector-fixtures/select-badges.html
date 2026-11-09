@@ -1,0 +1,37 @@
+<!doctype html>
+<!-- Nine video cards (a thumbnail link and a title link each) that the collector marks with
+     badges. run-select.js drives setSelection() / takeToggles() as the app would and writes what
+     the page did into the result. The page has a click handler of its own on the document, like
+     a site would, to show that a badge click never reaches it. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Selection badges</title>
+<style>
+  body { margin: 0; font: 15px sans-serif; color: #222; }
+  .feed { display: grid; grid-template-columns: repeat(3, 320px); gap: 24px; padding: 32px; }
+  .card { width: 320px; }
+  .card .thumb { display: block; width: 320px; height: 180px; background: #cfcfcf; }
+  .card .thumb img { display: block; width: 320px; height: 180px; }
+  .card .title { display: block; padding-top: 6px; font-weight: 600; color: #222; text-decoration: none; }
+  .card .meta { color: #767676; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="feed" id="feed"></div>
+<script>
+  const feed = document.getElementById("feed");
+  for (let n = 1; n <= 9; n += 1) {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML =
+      `<a class="thumb" href="/watch/${n}"><img width="320" height="180" alt="" src="/missing-${n}.png"></a>` +
+      `<a class="title" href="/watch/${n}">Video number ${n}</a>` +
+      `<div class="meta">Sample channel</div>`;
+    feed.appendChild(card);
+  }
+</script>
+<script src="/collector.js"></script>
+<script src="/run-select.js"></script>
+</body>
+</html>

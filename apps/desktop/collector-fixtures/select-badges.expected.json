@@ -1,0 +1,29 @@
+[
+  {
+    "fields": {
+      "items": ["/watch/1", "/watch/2", "/watch/3", "/watch/4", "/watch/5", "/watch/6", "/watch/7", "/watch/8", "/watch/9"],
+      "initial": { "count": 9, "off": [] },
+      "afterSet": { "off": ["/watch/2", "/watch/5"], "outlinedOff": ["/watch/2", "/watch/5"] }
+    }
+  },
+  {
+    "fields": {
+      "click1": { "prevented": true, "pageSawClick": false, "stayed": true },
+      "afterClick1": { "off": ["/watch/2", "/watch/4", "/watch/5"] },
+      "toggles1": [{ "url": "/watch/4", "selected": false }],
+      "toggles1Again": [],
+      "click2": { "prevented": true, "pageSawClick": false, "stayed": true },
+      "toggles2": [{ "url": "/watch/4", "selected": true }]
+    }
+  },
+  {
+    "fields": {
+      "pendingKept": { "off": ["/watch/2", "/watch/6"] },
+      "pendingToggles": [{ "url": "/watch/6", "selected": false }],
+      "afterRescan": { "sameBadge": true, "count": 9, "off": ["/watch/2", "/watch/6"] },
+      "afterClear": { "badges": 0, "marked": 0 },
+      "afterClearScan": { "off": [] },
+      "unmarkedScan": { "items": 9, "badges": 0, "marked": 0 }
+    }
+  }
+]

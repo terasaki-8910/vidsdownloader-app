@@ -3,7 +3,11 @@
 // mock backend #mockUrl=<url>, #mockLogin=<domain>, #mockMulti=1, #mockUpdate=available. The
 // browser tray can be opened without clicks with #view=browser&mockCollect=1 (links) or
 // #view=browser&mockCollect=images (page images). #view=browser&mockScroll=running|end|stopped|cap
-// opens the links tray in that auto-scroll state (running stays running, cap holds 2,000 items). List
+// opens the links tray in that auto-scroll state (running stays running, cap holds 2,000 items).
+// #view=browser&mockPick=empty|active|picked opens the element picker's states in the tray: "empty"
+// is the played-videos group with nothing played (the empty-state line and its button), "active"
+// the links tray while picking (banner, pressed head button, the mock page's pointer label), and
+// "picked" the links tray with the result of pressing a link (the two choices). List
 // screenshots can use #select=<id>,<id>, then #menu=<id> and #confirm=delete. This is
 // not app routing -- real navigation is plain React state. Collect-method screenshots use
 // #view=methods, #mockCollectMethods=empty, #methodsMenu=<kind>-<id>, and
@@ -41,6 +45,11 @@ export interface DebugHashState {
    * stays as it is until a button changes it ("running" never ends by itself).
    */
   mockScroll?: "running" | "end" | "stopped" | "cap";
+  /**
+   * Mock backend only: open a page and its tray in one of the element picker's states (see
+   * the list at the top of this file).
+   */
+  mockPick?: "empty" | "active" | "picked";
   /** Mock backend only: show the recorded-flow prototype with a two-step flow. */
   mockFlow?: boolean;
   /** Mock backend only: start in login mode for the site with this domain. */
@@ -157,6 +166,8 @@ export function readDebugHash(): DebugHashState {
   if (mockScroll === "running" || mockScroll === "end" || mockScroll === "stopped" || mockScroll === "cap") {
     state.mockScroll = mockScroll;
   }
+  const mockPick = params.get("mockPick");
+  if (mockPick === "empty" || mockPick === "active" || mockPick === "picked") state.mockPick = mockPick;
   if (params.get("mockFlow") === "1") state.mockFlow = true;
   const mockLogin = params.get("mockLogin");
   if (mockLogin) state.mockLogin = mockLogin;

@@ -13,6 +13,9 @@
 //   page           page facts ({ title, uploader, publishedAt, id }), compared field by field
 //   groupsInclude  shapes that must be among the groups
 //   groupsExclude  prefixes no group shape may start with
+//   step           fields of a scroll step's report (run-step.js pages), compared one by one
+//   fields         fields of a page-driven result (run-select.js, run-pick.js pages), each compared
+//                  to its expected value as JSON
 //
 // The browser: $COLLECTOR_BROWSER, else Microsoft Edge or Google Chrome at their usual places.
 
@@ -107,6 +110,16 @@ function check(result, expected) {
     for (const [field, wanted] of Object.entries(expected.step)) {
       if (result[field] !== wanted) {
         problems.push(`${field}: expected ${JSON.stringify(wanted)}, actual ${JSON.stringify(result[field])}`);
+      }
+    }
+    return problems;
+  }
+  if (expected.fields) {
+    for (const [field, wanted] of Object.entries(expected.fields)) {
+      if (JSON.stringify(result[field]) !== JSON.stringify(wanted)) {
+        problems.push(
+          `${field}\n      expected ${JSON.stringify(wanted)}\n      actual   ${JSON.stringify(result[field])}`,
+        );
       }
     }
     return problems;

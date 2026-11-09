@@ -427,6 +427,19 @@
   padding: 0 8px;
 }
 
+/* The tray's head row: the group select, then the button that picks from the page. */
+.groupRow {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.groupRow .groupSelect {
+  flex: 1;
+  width: auto;
+  margin-right: 4px;
+}
+
 .adsNote,
 .xNotice,
 .collectError {
@@ -666,13 +679,72 @@
   overflow-wrap: anywhere;
 }
 
-.collectEmpty {
+/* The tray when nothing was found: the line, the way out, and the button for it. */
+.emptyArea {
   flex: 1;
-  margin: 0;
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: 12px;
   padding: 24px 18px;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.5;
+}
+
+.emptyArea p {
+  margin: 0;
+}
+
+/* The element picker: a note at the top of the tray body. */
+.trayNote {
+  flex: none;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.pickBox {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--accent-fill);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.pickResult {
+  margin: 0;
+}
+
+.pickShape {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+/* The picked result has two buttons under its line instead of one beside it. */
+.pickBox:has(.pickActions) {
+  display: grid;
+  justify-content: stretch;
+  gap: 10px;
+}
+
+.pickActions {
+  display: grid;
+  gap: 6px;
+}
+
+.pickActions .secondary,
+.pickActions .ghost {
+  height: 32px;
+  justify-content: center;
+}
+
+.pickActions .secondary {
+  background: var(--surface);
 }
 
 .trayFoot {
@@ -757,6 +829,31 @@
   border-radius: 50%;
   background: var(--found);
   color: var(--surface);
+}
+
+/* On the mock page while picking: the card the picker points at, with its label above it. */
+.pickOutline {
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--accent);
+  border-radius: 4px;
+  background: var(--accent-fill);
+  pointer-events: none;
+}
+
+.pickTag {
+  position: absolute;
+  left: -2px;
+  bottom: calc(100% + 1px);
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 /* The address field needs the room first: at 820px the full chip left it about

@@ -1,0 +1,60 @@
+<!doctype html>
+<!-- A post with a video (a player lays controls over it), a grid of six link cards, and a large
+     image outside any link. run-pick.js starts the element picker and points at each of them. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Element picker</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 system-ui, sans-serif; color: #222; background: #fff; }
+  .layout { display: grid; grid-template-columns: 540px 1fr; gap: 40px; max-width: 1200px; margin: 0 auto; padding: 32px; align-items: start; }
+  .post { padding: 16px; border: 1px solid #dcdcdc; border-radius: 8px; }
+  .post h2 { margin: 0 0 12px; font-size: 18px; }
+  .player { position: relative; width: 480px; height: 270px; }
+  .player video { display: block; width: 480px; height: 270px; background: #bdbdbd; }
+  .controls { position: absolute; left: 0; right: 0; bottom: 0; height: 40px; display: flex; align-items: center; gap: 12px; padding: 0 12px; background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 12px; }
+  .controls .play { width: 0; height: 0; border-left: 12px solid #fff; border-top: 7px solid transparent; border-bottom: 7px solid transparent; }
+  .controls .bar { flex: 1; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.4); }
+  .side { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .card img { display: block; width: 100%; height: 96px; background: #d4d4d4; }
+  .card .title { display: block; padding-top: 6px; font-weight: 600; color: #222; text-decoration: none; }
+  .card .meta { color: #767676; font-size: 12px; }
+  .large { grid-column: 1 / -1; margin-top: 8px; }
+  .large img { display: block; width: 300px; height: 200px; background: #cfcfcf; }
+  .large p { margin: 6px 0 0; color: #767676; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <section class="post">
+    <h2>Post title</h2>
+    <div class="player">
+      <video width="480" height="270" src="/clip.mp4" poster="/missing-poster.png"></video>
+      <div class="controls"><span class="play"></span><span class="bar"></span><span>0:00 / 3:21</span></div>
+    </div>
+  </section>
+  <div class="side" id="side">
+    <div class="large">
+      <img width="300" height="200" alt="An image that is not a link" src="/large.png">
+      <p>An image outside any link</p>
+    </div>
+  </div>
+</div>
+<script>
+  const side = document.getElementById("side");
+  const large = side.querySelector(".large");
+  for (let n = 1; n <= 6; n += 1) {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML =
+      `<a class="thumb" href="/watch/${n}"><img width="170" height="96" alt="" src="/missing-${n}.png"></a>` +
+      `<a class="title" href="/watch/${n}">Video ${n}</a>` +
+      `<div class="meta">Sample channel</div>`;
+    side.insertBefore(card, large);
+  }
+</script>
+<script src="/collector.js"></script>
+<script src="/run-pick.js"></script>
+</body>
+</html>

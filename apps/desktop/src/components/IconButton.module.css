@@ -24,3 +24,10 @@
   width: 28px;
   height: 28px;
 }
+
+/* A pressed toggle (the tray's "pick from the page" while it is waiting for a press). */
+.button[aria-pressed="true"],
+.button[aria-pressed="true"]:hover:not(:disabled) {
+  background: var(--accent-fill);
+  color: var(--accent-ink);
+}

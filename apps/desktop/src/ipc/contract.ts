@@ -369,6 +369,29 @@ export interface CollectLinks {
   urls: string[];
 }
 
+/** A badge the person clicked in the page: the found item and whether it is selected now. */
+export interface CollectToggle {
+  url: string;
+  selected: boolean;
+}
+
+/**
+ * How the element picker ("pick from the page") is going. `active`: pick mode is on in the page.
+ * `ended`: it is over and nothing was picked (Esc in the page, the stop button, a page change).
+ * `finding`: a video was pressed and its stream is being looked for (up to 10 s). `link`: a link
+ * was pressed -- its address, the shape it belongs to and how many links have that shape.
+ * `image`: a page image was pressed. `video`: a video was pressed; the played group is chosen and
+ * these are its new streams. `videoNotFound`: no new stream arrived in time.
+ */
+export type CollectPick =
+  | { kind: "active" }
+  | { kind: "ended" }
+  | { kind: "finding" }
+  | { kind: "link"; url: string; shape: string; count: number }
+  | { kind: "image"; url: string }
+  | { kind: "video"; urls: string[] }
+  | { kind: "videoNotFound" };
+
 /** What a source's last check found. */
 export type SourceResult =
   /** `count` new items were queued. */
@@ -629,6 +652,18 @@ export interface Commands {
   collect_close: { args: Record<string, never>; result: null };
   /** Scrolls the page to the item's card; false when the page no longer has it. */
   collect_reveal: { args: { url: string }; result: boolean };
+  /**
+   * The tray's selection changed: the found items it has NOT selected, so the page's badges show
+   * the same checks (the page keeps clicks the app has not seen yet on top of this).
+   */
+  collect_set_selection: { args: { unselected: string[] }; result: null };
+  /**
+   * Turns on pick mode in the page ("pick from the page"); the page's labels use `language`.
+   * Stops a running auto-scroll first. Results come as "collect-pick" events.
+   */
+  collect_pick_start: { args: { language: Language }; result: null };
+  /** Turns pick mode off (and gives up a video lookup that is still waiting); emits "collect-pick" ended. */
+  collect_pick_stop: { args: Record<string, never>; result: null };
   collect_save_rule: {
     args: { name: string; matchPattern: string };
     result: number;
@@ -711,6 +746,9 @@ export interface Events {
   /** The in-app browser changed page, loading state or mode. */
   "browser-state": BrowserState;
   "collect-state": CollectState;
+  /** Badges clicked in the page since the last event, oldest first (the app polls the page every 500 ms). */
+  "collect-toggles": { toggles: CollectToggle[] };
+  "collect-pick": CollectPick;
   "flow-record-progress": { steps: number };
   "flow-progress": { done: number; total: number };
   /** The site list changed (sites, accounts or their login status). */

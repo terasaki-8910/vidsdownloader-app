@@ -10,6 +10,8 @@ interface IconButtonProps {
   className?: string;
   size?: "sm" | "md";
   tabIndex?: number;
+  /** A toggle button's state (aria-pressed); the pressed button is tinted with the accent. */
+  pressed?: boolean;
 }
 
 export function IconButton({
@@ -20,12 +22,14 @@ export function IconButton({
   className,
   size = "md",
   tabIndex,
+  pressed,
 }: IconButtonProps) {
   return (
     <button
       type="button"
       aria-label={label}
       title={label}
+      aria-pressed={pressed}
       onClick={onClick}
       disabled={disabled}
       tabIndex={tabIndex}

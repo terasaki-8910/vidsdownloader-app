@@ -1,0 +1,48 @@
+[
+  {
+    "fields": {
+      "video": {
+        "label": "Video",
+        "prevented": true,
+        "pageSawClick": false,
+        "pick": { "kind": "video", "url": "/clip.mp4", "shape": null, "count": null, "videoIndex": 0 },
+        "stillPicking": false
+      },
+      "videoAgain": null,
+      "link": {
+        "label": "Link · /watch/{num} · 6 of the same shape",
+        "prevented": true,
+        "pageSawClick": false,
+        "pick": { "kind": "link", "url": "/watch/3", "shape": "/watch/{num}", "count": 6, "videoIndex": null },
+        "stillPicking": false
+      },
+      "linkAgain": null,
+      "image": {
+        "label": "Image",
+        "prevented": true,
+        "pageSawClick": false,
+        "pick": { "kind": "image", "url": "/large.png", "shape": null, "count": null, "videoIndex": null },
+        "stillPicking": false
+      },
+      "imageAgain": null
+    }
+  },
+  {
+    "fields": {
+      "none": {
+        "label": "No video or link here",
+        "prevented": true,
+        "pageSawClick": false,
+        "pick": { "kind": "none", "url": null, "shape": null, "count": null, "videoIndex": null },
+        "stillPicking": true
+      },
+      "escape": {
+        "pick": { "kind": "cancel", "url": null, "shape": null, "count": null, "videoIndex": null },
+        "stillPicking": false
+      },
+      "japaneseLabel": "リンク · /watch/{num} · 同じ形 6 件",
+      "stopped": { "pick": null, "stillPicking": false },
+      "overBadge": { "label": "Link · /watch/{num} · 6 of the same shape" }
+    }
+  }
+]

@@ -36,8 +36,8 @@ use crate::account_commands::{
     sites_list,
 };
 use crate::collector::{
-    collect_close, collect_reload_find, collect_reveal, collect_save_rule, collect_select,
-    collect_start, collect_stop,
+    collect_close, collect_pick_start, collect_pick_stop, collect_reload_find, collect_reveal,
+    collect_save_rule, collect_select, collect_set_selection, collect_start, collect_stop,
 };
 use crate::commands::{
     cancel_job, copy_text, enqueue_page_images, enqueue_page_media, enqueue_urls,
@@ -235,6 +235,9 @@ pub fn run() {
             collect_select,
             collect_close,
             collect_reveal,
+            collect_set_selection,
+            collect_pick_start,
+            collect_pick_stop,
             collect_save_rule,
             methods_list,
             method_set_options,

@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -27,6 +28,14 @@ const RELOAD_LOAD_LIMIT: Duration = Duration::from_secs(10);
 const RELOAD_PLAY_AFTER: Duration = Duration::from_secs(3);
 const RELOAD_FIND_LIMIT: Duration = Duration::from_secs(20);
 const RELOAD_FIND_POLL: Duration = Duration::from_secs(1);
+/// How often the open session asks the page what it wants to tell the app: badges clicked in
+/// the page and, in pick mode, the element picked.
+const PAGE_POLL: Duration = Duration::from_millis(500);
+/// How long a pressed video is given to show a new played stream, and how often that is looked at.
+const PICK_VIDEO_WAIT: Duration = Duration::from_secs(10);
+const PICK_VIDEO_POLL: Duration = Duration::from_millis(250);
+/// The most videos a page is believed to hold when the picker names one by its position.
+const MAX_VIDEO_INDEX: u64 = 10_000;
 pub(crate) const PLAYED_SHAPE: &str = "__played__";
 const IMAGES_SHAPE: &str = "{images}";
 const MAX_SCAN_ITEMS: usize = 2_000;
@@ -86,6 +95,77 @@ pub struct CollectLinks {
     pub urls: Vec<String>,
 }
 
+/// A badge the person clicked in the page: the item and whether it is selected now.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectToggle {
+    pub url: String,
+    pub selected: bool,
+}
+
+/// The "collect-toggles" event: the clicks made in the page since the last one, oldest first.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CollectTogglesEvent {
+    toggles: Vec<CollectToggle>,
+}
+
+/// The "collect-pick" event: how the element picker (「ページの中から選ぶ」) is going.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum CollectPickEvent {
+    /// Pick mode is on in the page.
+    Active,
+    /// Pick mode is over and nothing was picked (Esc, the stop button, a page change).
+    Ended,
+    /// A video was pressed; its stream is being looked for.
+    Finding,
+    /// A link was pressed: its address, the shape it belongs to and how many links have it.
+    Link {
+        url: String,
+        shape: String,
+        count: usize,
+    },
+    /// A page image was pressed.
+    Image { url: String },
+    /// A video was pressed and these streams are new in the played group, which is chosen.
+    Video { urls: Vec<String> },
+    /// A video was pressed and no new stream arrived in time.
+    VideoNotFound,
+}
+
+/// What the page's element picker reports through `takePick()`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum PagePick {
+    /// Esc, or an answer that could not be read: pick mode is over and nothing was picked.
+    Cancel,
+    /// A press on nothing: the page keeps pick mode on.
+    Nothing,
+    Link {
+        url: String,
+        shape: String,
+        count: usize,
+    },
+    Video {
+        /// The video's own address when it is an http(s) one (not a blob: stream).
+        url: Option<String>,
+        /// Its position among the page's `<video>` elements.
+        index: Option<usize>,
+    },
+    Image {
+        url: String,
+    },
+}
+
+/// What one look at the page returned (`poll_expression`).
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct PagePoll {
+    pub(crate) toggles: Vec<CollectToggle>,
+    pub(crate) pick: Option<PagePick>,
+    /// The page has no collector any more: it was loaded again.
+    pub(crate) gone: bool,
+}
+
 /// Why a collect run is not running (`CollectState::stop_reason`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -122,14 +202,30 @@ pub struct CollectState {
 
 #[derive(Debug)]
 struct CollectSession {
+    /// Tells this session from an earlier one on the same page, for the tasks that outlive a call.
+    id: u64,
     generation: u64,
     page_url: String,
+    /// Whether the task asking the page for toggles and picks is running.
+    poll_active: bool,
+    /// Pick mode is on in the page.
+    picking: bool,
+    /// Changes whenever picking starts, stops or ends, so a video lookup started by an earlier
+    /// pick gives up quietly.
+    pick_epoch: u64,
     /// True when the shape was chosen by the user or a saved rule; otherwise every scan
     /// picks the largest group again (the page grows while it scrolls).
     shape_fixed: bool,
     include_ads: bool,
     ads: HashSet<String>,
     state: CollectState,
+}
+
+/// One round of the element picker in one session; see `CollectSession::pick_epoch`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PickTicket {
+    session_id: u64,
+    epoch: u64,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -161,6 +257,7 @@ pub struct CollectorManager {
     browser: Arc<BrowserManager>,
     store: Arc<Mutex<vids_core::store::Store>>,
     session: Mutex<Option<CollectSession>>,
+    next_session_id: AtomicU64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -277,6 +374,7 @@ impl CollectorManager {
             browser,
             store,
             session: Mutex::new(None),
+            next_session_id: AtomicU64::new(1),
         }
     }
 
@@ -295,11 +393,17 @@ impl CollectorManager {
         let mut session = lock_recover(&self.session);
         let generation;
         let new_session;
+        let session_id;
+        let spawn_poll;
         if let Some(current) = session
             .as_mut()
             .filter(|current| current.page_url == page_url)
         {
             new_session = false;
+            session_id = current.id;
+            // The poll ended when the page changed; coming back to the page starts it again.
+            spawn_poll = !current.poll_active;
+            current.poll_active = true;
             current.generation = current.generation.wrapping_add(1);
             generation = current.generation;
             current.state.running = true;
@@ -321,14 +425,20 @@ impl CollectorManager {
             }
         } else {
             new_session = true;
+            spawn_poll = true;
+            session_id = self.next_session_id.fetch_add(1, Ordering::Relaxed);
             let (saved_shape, saved_max_scrolls, rule_id) = saved_for_page
                 .map(|saved| (Some(saved.shape), saved.max_scrolls, Some(saved.id)))
                 .unwrap_or((shape, max_scrolls, None));
             generation = 1;
             let shape_fixed = saved_shape.is_some();
             *session = Some(CollectSession {
+                id: session_id,
                 generation,
                 page_url: page_url.clone(),
+                poll_active: true,
+                picking: false,
+                pick_epoch: 0,
                 shape_fixed,
                 include_ads,
                 ads: HashSet::new(),
@@ -356,6 +466,9 @@ impl CollectorManager {
         drop(session);
         emit_state(app, &state);
         self.spawn_loop(app.clone(), generation);
+        if spawn_poll {
+            self.spawn_page_poll(app.clone(), session_id);
+        }
         if new_session {
             self.spawn_played_refresh(app.clone(), page_url);
         }
@@ -529,6 +642,82 @@ impl CollectorManager {
         Ok(value.get("found").and_then(Value::as_bool).unwrap_or(false))
     }
 
+    /// Tells the page which found items the tray has not selected, so its badges show the same
+    /// checks. Does nothing when no session is open on the page that is showing.
+    pub async fn set_selection(&self, unselected: Vec<String>) -> Result<(), String> {
+        if !self.session_on_current_page() {
+            return Ok(());
+        }
+        let expression = set_selection_expression(&unselected)?;
+        self.browser
+            .execute(&format!("{COLLECTOR_SCRIPT}\n{expression}"))
+            .await?;
+        Ok(())
+    }
+
+    /// Turns pick mode on in the page. Scrolling stops first: a page moving under the pointer
+    /// cannot be pointed at.
+    pub async fn pick_start(&self, app: &AppHandle, language: &str) -> Result<(), String> {
+        let page_url = self
+            .browser
+            .current_page_url()
+            .ok_or_else(|| "browser page is not open".to_owned())?;
+        let expression = pick_start_expression(language)?;
+        let (ticket, scroll_stopped) = {
+            let mut session = lock_recover(&self.session);
+            let current = session
+                .as_mut()
+                .filter(|current| current.page_url == page_url)
+                .ok_or_else(|| "no collect session is open on the current page".to_owned())?;
+            let was_running = current.state.running;
+            if was_running {
+                current.generation = current.generation.wrapping_add(1);
+                current.state.running = false;
+                current.state.stop_reason = Some(CollectStopReason::Stopped);
+            }
+            current.picking = true;
+            current.pick_epoch = current.pick_epoch.wrapping_add(1);
+            (
+                PickTicket {
+                    session_id: current.id,
+                    epoch: current.pick_epoch,
+                },
+                was_running.then(|| current.state.clone()),
+            )
+        };
+        if let Some(state) = scroll_stopped {
+            emit_state(app, &state);
+        }
+        if let Err(error) = self
+            .browser
+            .execute(&format!("{COLLECTOR_SCRIPT}\n{expression}"))
+            .await
+        {
+            self.end_pick(ticket);
+            return Err(error);
+        }
+        if self.pick_ticket_valid(ticket) {
+            emit_pick(app, &CollectPickEvent::Active);
+        }
+        Ok(())
+    }
+
+    /// Turns pick mode off, and drops a video lookup that is still waiting.
+    pub async fn pick_stop(&self, app: &AppHandle) -> Result<(), String> {
+        {
+            let mut session = lock_recover(&self.session);
+            let current = session
+                .as_mut()
+                .ok_or_else(|| "no collect session is open".to_owned())?;
+            current.picking = false;
+            current.pick_epoch = current.pick_epoch.wrapping_add(1);
+        }
+        emit_pick(app, &CollectPickEvent::Ended);
+        // The page may be gone or loaded again already; then there is nothing to turn off.
+        let _ = self.browser.execute(STOP_PICK_SCRIPT).await;
+        Ok(())
+    }
+
     pub async fn close(&self) -> Result<(), String> {
         let had_session = lock_recover(&self.session).take().is_some();
         if had_session && self.browser.current_page_url().is_some() {
@@ -650,6 +839,211 @@ impl CollectorManager {
             }));
         }
         Ok(None)
+    }
+
+    fn session_on_current_page(&self) -> bool {
+        let Some(page_url) = self.browser.current_page_url() else {
+            return false;
+        };
+        lock_recover(&self.session)
+            .as_ref()
+            .is_some_and(|current| current.page_url == page_url)
+    }
+
+    /// Whether `session_id` is the open session and the browser still shows its page.
+    fn session_on_page(&self, session_id: u64, page_url: &str) -> bool {
+        self.browser.current_page_url().as_deref() == Some(page_url)
+            && lock_recover(&self.session)
+                .as_ref()
+                .is_some_and(|current| current.id == session_id && current.page_url == page_url)
+    }
+
+    fn pick_ticket_valid(&self, ticket: PickTicket) -> bool {
+        lock_recover(&self.session).as_ref().is_some_and(|current| {
+            current.id == ticket.session_id && current.pick_epoch == ticket.epoch
+        })
+    }
+
+    /// Leaves pick mode in the session if `ticket` is still the latest pick. Returns the ticket
+    /// that follows it (for what is done with the answer), or `None` when it was out of date.
+    fn end_pick(&self, ticket: PickTicket) -> Option<PickTicket> {
+        let mut session = lock_recover(&self.session);
+        let current = session.as_mut().filter(|current| {
+            current.id == ticket.session_id && current.pick_epoch == ticket.epoch
+        })?;
+        current.picking = false;
+        current.pick_epoch = current.pick_epoch.wrapping_add(1);
+        Some(PickTicket {
+            session_id: current.id,
+            epoch: current.pick_epoch,
+        })
+    }
+
+    fn poll_ended(&self, session_id: u64) {
+        if let Some(current) = lock_recover(&self.session)
+            .as_mut()
+            .filter(|current| current.id == session_id)
+        {
+            current.poll_active = false;
+        }
+    }
+
+    /// Asks the open session's page every half second for the badges clicked in it and, in
+    /// pick mode, for the element picked. The page never calls the app; this only pulls.
+    fn spawn_page_poll(self: &Arc<Self>, app: AppHandle, session_id: u64) {
+        let manager = Arc::clone(self);
+        tauri::async_runtime::spawn(async move {
+            loop {
+                tokio::time::sleep(PAGE_POLL).await;
+                if !manager.poll_page(&app, session_id).await {
+                    manager.poll_ended(session_id);
+                    return;
+                }
+            }
+        });
+    }
+
+    /// One look at the page. False once the session is closed or the page changed: the poll ends.
+    async fn poll_page(self: &Arc<Self>, app: &AppHandle, session_id: u64) -> bool {
+        let (page_url, picking, epoch) = {
+            let session = lock_recover(&self.session);
+            let Some(current) = session.as_ref().filter(|current| current.id == session_id) else {
+                return false;
+            };
+            (
+                current.page_url.clone(),
+                current.picking,
+                current.pick_epoch,
+            )
+        };
+        let ticket = PickTicket { session_id, epoch };
+        if self.browser.current_page_url().as_deref() != Some(page_url.as_str()) {
+            // Pick mode lives in the page's script: turn it off if the page is still the same
+            // document (a single-page app that changed its address).
+            if picking && self.end_pick(ticket).is_some() {
+                emit_pick(app, &CollectPickEvent::Ended);
+                let _ = self.browser.execute(STOP_PICK_SCRIPT).await;
+            }
+            return false;
+        }
+        let Ok(value) = self.browser.execute(poll_expression(picking)).await else {
+            // A page that is loading cannot answer; the next look tries again.
+            return true;
+        };
+        let poll = parse_poll(&value);
+        // The page may have been left, or the session replaced, while it was asked.
+        if !self.session_on_page(session_id, &page_url) {
+            return true;
+        }
+        if !poll.toggles.is_empty() {
+            emit_toggles(app, poll.toggles);
+        }
+        if picking {
+            if poll.gone {
+                if self.end_pick(ticket).is_some() {
+                    emit_pick(app, &CollectPickEvent::Ended);
+                }
+            } else if let Some(pick) = poll.pick {
+                self.handle_pick(app, ticket, &page_url, pick);
+            }
+        }
+        true
+    }
+
+    /// What the tray is told about an element the person pressed in the page.
+    fn handle_pick(
+        self: &Arc<Self>,
+        app: &AppHandle,
+        ticket: PickTicket,
+        page_url: &str,
+        pick: PagePick,
+    ) {
+        let event = match pick {
+            // The page stays in pick mode after a press on nothing.
+            PagePick::Nothing => return,
+            PagePick::Cancel => CollectPickEvent::Ended,
+            PagePick::Link { url, shape, count } => CollectPickEvent::Link { url, shape, count },
+            PagePick::Image { url } => CollectPickEvent::Image { url },
+            PagePick::Video { url, index } => {
+                let Some(next) = self.end_pick(ticket) else {
+                    return;
+                };
+                emit_pick(app, &CollectPickEvent::Finding);
+                let manager = Arc::clone(self);
+                let app = app.clone();
+                let page_url = page_url.to_owned();
+                tauri::async_runtime::spawn(async move {
+                    manager
+                        .find_picked_video(&app, next, &page_url, url, index)
+                        .await;
+                });
+                return;
+            }
+        };
+        if self.end_pick(ticket).is_some() {
+            emit_pick(app, &event);
+        }
+    }
+
+    /// Looks for the stream of a video the person pressed. A video with an http(s) address of
+    /// its own is added to the played streams; any other is played muted in the page. Either
+    /// way, up to ten seconds are given for a new stream to show, and then the played group is
+    /// chosen with the new streams (the tray checks them).
+    async fn find_picked_video(
+        &self,
+        app: &AppHandle,
+        ticket: PickTicket,
+        page_url: &str,
+        url: Option<String>,
+        index: Option<usize>,
+    ) {
+        let before = self
+            .browser
+            .played_media(page_url)
+            .into_iter()
+            .map(|media| media.url)
+            .collect::<HashSet<_>>();
+        let added = url
+            .as_deref()
+            .is_some_and(|url| self.browser.observe_picked_media(page_url, url));
+        if !added && let Some(index) = index {
+            let _ = self.browser.execute(&play_video_expression(index)).await;
+        }
+        let started = Instant::now();
+        loop {
+            tokio::time::sleep(PICK_VIDEO_POLL).await;
+            if !self.pick_ticket_valid(ticket) {
+                // Another pick, a stop or a closed tray took over; it tells the tray itself.
+                return;
+            }
+            if self.browser.current_page_url().as_deref() != Some(page_url) {
+                emit_pick(app, &CollectPickEvent::Ended);
+                return;
+            }
+            let played = self.browser.played_media(page_url);
+            let fresh = fresh_streams(&played, &before, url.as_deref());
+            if !fresh.is_empty() {
+                let state = {
+                    let mut session = lock_recover(&self.session);
+                    let Some(current) = session.as_mut().filter(|current| {
+                        current.id == ticket.session_id && current.pick_epoch == ticket.epoch
+                    }) else {
+                        return;
+                    };
+                    current.shape_fixed = true;
+                    current.state.shape = Some(PLAYED_SHAPE.to_owned());
+                    apply_played(&mut current.state, true, played);
+                    current.state.clone()
+                };
+                emit_state(app, &state);
+                emit_pick(app, &CollectPickEvent::Video { urls: fresh });
+                return;
+            }
+            if started.elapsed() >= PICK_VIDEO_WAIT {
+                emit_pick(app, &CollectPickEvent::VideoNotFound);
+                return;
+            }
+        }
     }
 
     fn spawn_loop(self: &Arc<Self>, app: AppHandle, generation: u64) {
@@ -814,7 +1208,7 @@ impl CollectorManager {
     }
 
     async fn scan_and_merge(&self, app: &AppHandle, generation: u64) -> Result<usize, String> {
-        let (requested_shape, include_ads) = {
+        let (requested_shape, include_ads, mark_cards) = {
             let session = lock_recover(&self.session);
             let current = session
                 .as_ref()
@@ -827,9 +1221,11 @@ impl CollectorManager {
                     .flatten()
                     .filter(|shape| shape != PLAYED_SHAPE),
                 current.include_ads,
+                // The played streams have no cards in the page: nothing is marked there.
+                current.state.shape.as_deref() != Some(PLAYED_SHAPE),
             )
         };
-        let expression = scan_expression(&requested_shape, include_ads)?;
+        let expression = scan_expression_marking(&requested_shape, include_ads, mark_cards)?;
         let value = self
             .browser
             .execute(&format!("{COLLECTOR_SCRIPT}\n{expression}"))
@@ -1065,6 +1461,29 @@ pub async fn collect_reveal(url: String, state: State<'_, AppState>) -> Result<b
     state.collector.reveal(url).await
 }
 
+/// The tray's selection changed: the page's badges follow (the item URLs that are not selected).
+#[tauri::command]
+pub async fn collect_set_selection(
+    unselected: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.collector.set_selection(unselected).await
+}
+
+#[tauri::command]
+pub async fn collect_pick_start(
+    language: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.collector.pick_start(&app, &language).await
+}
+
+#[tauri::command]
+pub async fn collect_pick_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    state.collector.pick_stop(&app).await
+}
+
 #[tauri::command]
 pub async fn collect_save_rule(
     name: String,
@@ -1217,15 +1636,183 @@ pub(crate) fn scan_expression(
     requested_shape: &Option<String>,
     include_ads: bool,
 ) -> Result<String, String> {
+    scan_expression_marking(requested_shape, include_ads, true)
+}
+
+/// A scan that leaves the page unmarked when `mark_cards` is false (the option is only sent then,
+/// so the default stays the scan every other caller makes).
+fn scan_expression_marking(
+    requested_shape: &Option<String>,
+    include_ads: bool,
+    mark_cards: bool,
+) -> Result<String, String> {
     let shape = serde_json::to_string(requested_shape).map_err(|error| error.to_string())?;
-    let options = serde_json::to_string(&json!({ "includeAds": include_ads }))
-        .map_err(|error| error.to_string())?;
+    let mut options = json!({ "includeAds": include_ads });
+    if !mark_cards {
+        options["mark"] = json!(false);
+    }
+    let options = serde_json::to_string(&options).map_err(|error| error.to_string())?;
     Ok(format!("window.__vdlCollector.scan({shape}, {options})"))
 }
 
 fn reveal_expression(url: &str) -> Result<String, String> {
     let url = serde_json::to_string(url).map_err(|error| error.to_string())?;
     Ok(format!("window.__vdlCollector.reveal({url})"))
+}
+
+/// What the app asks the page every `PAGE_POLL`. Without pick mode only the clicked badges are
+/// asked for, by a call into the collector the page already has (the script is not evaluated
+/// again for a poll); in pick mode the answer also carries the pick, and `gone` when the page
+/// has no collector any more (it was loaded again, and pick mode went with it).
+const POLL_TOGGLES_SCRIPT: &str =
+    "window.__vdlCollector ? window.__vdlCollector.takeToggles() : []";
+const POLL_PICKING_SCRIPT: &str = "(() => { const c = window.__vdlCollector; return c ? { toggles: c.takeToggles(), pick: c.takePick() } : { gone: true }; })()";
+const STOP_PICK_SCRIPT: &str = "window.__vdlCollector ? window.__vdlCollector.stopPick() : null";
+
+fn poll_expression(picking: bool) -> &'static str {
+    if picking {
+        POLL_PICKING_SCRIPT
+    } else {
+        POLL_TOGGLES_SCRIPT
+    }
+}
+
+/// The unselected URLs go into the page as a JSON array; only plain bounded strings are sent.
+fn set_selection_expression(unselected: &[String]) -> Result<String, String> {
+    let urls = unselected
+        .iter()
+        .filter(|url| !url.is_empty() && url.chars().count() <= MAX_URL_CHARS)
+        .take(MAX_SCAN_ITEMS)
+        .collect::<Vec<_>>();
+    let urls = serde_json::to_string(&urls).map_err(|error| error.to_string())?;
+    Ok(format!("window.__vdlCollector.setSelection({urls})"))
+}
+
+/// The page's labels follow the app's language ("en", else Japanese).
+fn pick_start_expression(language: &str) -> Result<String, String> {
+    let language = serde_json::to_string(if language == "en" { "en" } else { "ja" })
+        .map_err(|error| error.to_string())?;
+    Ok(format!("window.__vdlCollector.startPick({language})"))
+}
+
+/// Plays the `index`-th `<video>` of the page muted, the way `PLAY_SCRIPT` plays them all.
+fn play_video_expression(index: usize) -> String {
+    format!(
+        r#"(() => {{
+  const video = document.querySelectorAll("video")[{index}];
+  if (!video) return false;
+  video.muted = true;
+  video.play().catch(() => {{}});
+  return true;
+}})()"#
+    )
+}
+
+/// The played streams a press on a video made new: those not played before it, and the video's
+/// own address when it is among them.
+fn fresh_streams(
+    played: &[crate::browser::PlayedMedia],
+    before: &HashSet<String>,
+    picked: Option<&str>,
+) -> Vec<String> {
+    played
+        .iter()
+        .filter(|media| !before.contains(&media.url) || Some(media.url.as_str()) == picked)
+        .map(|media| media.url.clone())
+        .collect()
+}
+
+/// What the page returned for `poll_expression`: a list of toggles, or the object of pick mode.
+/// Everything is checked and bounded, as the scan's result is.
+pub(crate) fn parse_poll(value: &Value) -> PagePoll {
+    match value {
+        Value::Array(_) => PagePoll {
+            toggles: parse_toggles(value),
+            ..PagePoll::default()
+        },
+        Value::Object(object) => PagePoll {
+            toggles: object.get("toggles").map(parse_toggles).unwrap_or_default(),
+            pick: object.get("pick").and_then(parse_pick),
+            gone: object.get("gone").and_then(Value::as_bool).unwrap_or(false),
+        },
+        _ => PagePoll::default(),
+    }
+}
+
+/// The badge clicks: at most `MAX_SCAN_ITEMS`, each an http(s) URL and a selected flag.
+pub(crate) fn parse_toggles(value: &Value) -> Vec<CollectToggle> {
+    value
+        .as_array()
+        .map(|toggles| {
+            toggles
+                .iter()
+                .take(MAX_SCAN_ITEMS)
+                .filter_map(|toggle| {
+                    let url = bounded_string(toggle.get("url")?, MAX_URL_CHARS)?;
+                    if !is_http_url(&url) {
+                        return None;
+                    }
+                    let selected = toggle.get("selected")?.as_bool()?;
+                    Some(CollectToggle { url, selected })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The picker's answer. `None` when nothing was picked yet (null); an answer that cannot be
+/// read counts as a cancel, so pick mode ends rather than hangs.
+pub(crate) fn parse_pick(value: &Value) -> Option<PagePick> {
+    if value.is_null() {
+        return None;
+    }
+    Some(read_pick(value).unwrap_or(PagePick::Cancel))
+}
+
+fn read_pick(value: &Value) -> Option<PagePick> {
+    let object = value.as_object()?;
+    let http_url = |key: &str| {
+        object
+            .get(key)
+            .and_then(|url| bounded_string(url, MAX_URL_CHARS))
+            .filter(|url| is_http_url(url))
+    };
+    match object.get("kind")?.as_str()? {
+        "cancel" => Some(PagePick::Cancel),
+        "none" => Some(PagePick::Nothing),
+        "link" => {
+            let shape = bounded_string(object.get("shape")?, MAX_SHAPE_CHARS)
+                .filter(|shape| !shape.is_empty())?;
+            let count = usize::try_from(object.get("count")?.as_u64()?)
+                .ok()?
+                .min(MAX_SCAN_ITEMS);
+            Some(PagePick::Link {
+                url: http_url("url")?,
+                shape,
+                count,
+            })
+        }
+        "image" => Some(PagePick::Image {
+            url: http_url("url")?,
+        }),
+        "video" => Some(PagePick::Video {
+            url: http_url("url"),
+            index: object
+                .get("videoIndex")
+                .and_then(Value::as_u64)
+                .filter(|index| *index < MAX_VIDEO_INDEX)
+                .and_then(|index| usize::try_from(index).ok()),
+        }),
+        _ => None,
+    }
+}
+
+fn emit_pick(app: &AppHandle, event: &CollectPickEvent) {
+    let _ = app.emit("collect-pick", event.clone());
+}
+
+fn emit_toggles(app: &AppHandle, toggles: Vec<CollectToggle>) {
+    let _ = app.emit("collect-toggles", CollectTogglesEvent { toggles });
 }
 
 fn parse_item(value: &Value) -> Option<CollectItem> {
@@ -1338,11 +1925,14 @@ fn unix_now() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        COLLECTOR_SCRIPT, CollectGroup, CollectItem, CollectLinks, CollectPage, CollectState,
-        CollectStopReason, MAX_SCAN_ITEMS, MAX_URL_CHARS, PLAYED_SHAPE, ReloadFindDecision,
-        ScrollReport, ScrollWait, build_rule_json, glob_matches, merge_items, parse_scan_result,
-        parse_scroll_report, preferred_shape, reload_find_decision, reveal_expression,
-        scan_expression, scroll_wait_decision,
+        COLLECTOR_SCRIPT, CollectGroup, CollectItem, CollectLinks, CollectPage, CollectPickEvent,
+        CollectState, CollectStopReason, CollectToggle, CollectTogglesEvent, MAX_SCAN_ITEMS,
+        MAX_URL_CHARS, PLAYED_SHAPE, PagePick, PagePoll, ReloadFindDecision, ScrollReport,
+        ScrollWait, build_rule_json, fresh_streams, glob_matches, merge_items, parse_pick,
+        parse_poll, parse_scan_result, parse_scroll_report, parse_toggles, pick_start_expression,
+        play_video_expression, poll_expression, preferred_shape, reload_find_decision,
+        reveal_expression, scan_expression, scan_expression_marking, scroll_wait_decision,
+        set_selection_expression,
     };
     use serde_json::json;
     use std::collections::HashSet;
@@ -1657,6 +2247,19 @@ mod tests {
     }
 
     #[test]
+    fn a_scan_of_the_played_group_asks_the_page_to_mark_nothing() {
+        assert_eq!(
+            scan_expression_marking(&None, false, false).unwrap(),
+            r#"window.__vdlCollector.scan(null, {"includeAds":false,"mark":false})"#
+        );
+        // Marking is the default and is not sent.
+        assert_eq!(
+            scan_expression_marking(&None, true, true).unwrap(),
+            scan_expression(&None, true).unwrap()
+        );
+    }
+
+    #[test]
     fn reveal_expression_quotes_the_url_as_json() {
         assert_eq!(
             reveal_expression("https://example.com/a?b=\"c\"").unwrap(),
@@ -1873,5 +2476,369 @@ mod tests {
             preferred_shape(Some("/shorts/{id}"), Some("/watch/{id}"), &groups, 0).as_deref(),
             Some("/shorts/{id}")
         );
+    }
+
+    fn toggle(url: &str, selected: bool) -> CollectToggle {
+        CollectToggle {
+            url: url.to_owned(),
+            selected,
+        }
+    }
+
+    #[test]
+    fn collector_script_keeps_the_selection_and_picker_entry_points() {
+        for entry in [
+            "function setSelection(",
+            "function takeToggles(",
+            "function startPick(",
+            "function stopPick(",
+            "function takePick(",
+        ] {
+            assert!(COLLECTOR_SCRIPT.contains(entry), "{entry} is missing");
+        }
+        // The poll calls these on the collector the page already has.
+        assert!(COLLECTOR_SCRIPT.contains("setSelection,"));
+        assert!(COLLECTOR_SCRIPT.contains("takeToggles,"));
+        assert!(COLLECTOR_SCRIPT.contains("takePick,"));
+    }
+
+    #[test]
+    fn toggles_keep_valid_http_urls_with_a_selected_flag_in_order() {
+        let toggles = parse_toggles(&json!([
+            { "url": "https://example.com/watch/1", "selected": false },
+            { "url": "https://example.com/watch/2", "selected": true },
+            { "url": "https://example.com/watch/1", "selected": true },
+        ]));
+        assert_eq!(
+            toggles,
+            vec![
+                toggle("https://example.com/watch/1", false),
+                toggle("https://example.com/watch/2", true),
+                toggle("https://example.com/watch/1", true),
+            ]
+        );
+    }
+
+    #[test]
+    fn toggles_drop_what_is_not_a_bounded_http_url_with_a_boolean() {
+        let too_long = format!("https://example.com/{}", "x".repeat(MAX_URL_CHARS));
+        let toggles = parse_toggles(&json!([
+            { "url": "javascript:alert(1)", "selected": true },
+            { "url": "file:///etc/passwd", "selected": true },
+            { "url": too_long, "selected": true },
+            { "url": 5, "selected": true },
+            { "url": "https://example.com/a" },
+            { "url": "https://example.com/b", "selected": "yes" },
+            { "selected": true },
+            "https://example.com/c",
+            null,
+            { "url": "https://example.com/ok", "selected": false },
+        ]));
+        assert_eq!(toggles, vec![toggle("https://example.com/ok", false)]);
+        // Not a list at all.
+        for bad in [json!(null), json!({}), json!("x"), json!(3)] {
+            assert!(parse_toggles(&bad).is_empty(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn toggles_are_capped_at_the_most_items_a_session_holds() {
+        let many = (0..MAX_SCAN_ITEMS + 500)
+            .map(|index| json!({ "url": format!("https://example.com/watch/{index}"), "selected": false }))
+            .collect::<Vec<_>>();
+        let toggles = parse_toggles(&json!(many));
+        assert_eq!(toggles.len(), MAX_SCAN_ITEMS);
+        assert_eq!(toggles[0].url, "https://example.com/watch/0");
+    }
+
+    #[test]
+    fn a_poll_answer_is_a_list_of_toggles_or_the_picking_object() {
+        let list = parse_poll(&json!([{ "url": "https://example.com/a", "selected": true }]));
+        assert_eq!(
+            list,
+            PagePoll {
+                toggles: vec![toggle("https://example.com/a", true)],
+                pick: None,
+                gone: false,
+            }
+        );
+        let picking = parse_poll(&json!({
+            "toggles": [{ "url": "https://example.com/a", "selected": false }],
+            "pick": { "kind": "image", "url": "https://example.com/a.jpg" }
+        }));
+        assert_eq!(
+            picking.toggles,
+            vec![toggle("https://example.com/a", false)]
+        );
+        assert_eq!(
+            picking.pick,
+            Some(PagePick::Image {
+                url: "https://example.com/a.jpg".to_owned()
+            })
+        );
+        assert!(!picking.gone);
+        // A page without the collector (loaded again) says so.
+        assert!(parse_poll(&json!({ "gone": true })).gone);
+        // Nothing picked yet is null, not a pick.
+        assert_eq!(
+            parse_poll(&json!({ "toggles": [], "pick": null })),
+            PagePoll::default()
+        );
+        // An empty answer, a missing result or nonsense changes nothing.
+        for other in [json!([]), json!(null), json!("x"), json!(7), json!({})] {
+            assert_eq!(parse_poll(&other), PagePoll::default(), "{other}");
+        }
+    }
+
+    #[test]
+    fn picks_of_each_kind_are_read() {
+        assert_eq!(parse_pick(&json!(null)), None);
+        assert_eq!(
+            parse_pick(&json!({ "kind": "cancel" })),
+            Some(PagePick::Cancel)
+        );
+        assert_eq!(
+            parse_pick(&json!({ "kind": "none" })),
+            Some(PagePick::Nothing)
+        );
+        assert_eq!(
+            parse_pick(&json!({
+                "kind": "link",
+                "url": "https://example.com/watch/3",
+                "shape": "/watch/{num}",
+                "count": 6,
+                "videoIndex": null,
+                "rect": { "x": 1, "y": 2, "width": 3, "height": 4 }
+            })),
+            Some(PagePick::Link {
+                url: "https://example.com/watch/3".to_owned(),
+                shape: "/watch/{num}".to_owned(),
+                count: 6,
+            })
+        );
+        assert_eq!(
+            parse_pick(&json!({ "kind": "image", "url": "https://example.com/large.png" })),
+            Some(PagePick::Image {
+                url: "https://example.com/large.png".to_owned()
+            })
+        );
+        assert_eq!(
+            parse_pick(&json!({
+                "kind": "video",
+                "url": "https://example.com/clip.mp4",
+                "videoIndex": 2
+            })),
+            Some(PagePick::Video {
+                url: Some("https://example.com/clip.mp4".to_owned()),
+                index: Some(2),
+            })
+        );
+    }
+
+    #[test]
+    fn a_video_without_an_http_address_is_still_a_video_to_play() {
+        for url in [
+            json!(null),
+            json!("blob:https://example.com/1234"),
+            json!("data:video/mp4;base64,AAAA"),
+        ] {
+            assert_eq!(
+                parse_pick(&json!({ "kind": "video", "url": url, "videoIndex": 0 })),
+                Some(PagePick::Video {
+                    url: None,
+                    index: Some(0)
+                })
+            );
+        }
+        // The position is bounded; without one the video can only be waited for.
+        assert_eq!(
+            parse_pick(&json!({ "kind": "video", "url": null, "videoIndex": 10_000 })),
+            Some(PagePick::Video {
+                url: None,
+                index: None
+            })
+        );
+        assert_eq!(
+            parse_pick(&json!({ "kind": "video", "url": null, "videoIndex": -1 })),
+            Some(PagePick::Video {
+                url: None,
+                index: None
+            })
+        );
+    }
+
+    #[test]
+    fn picks_are_bounded_and_a_pick_that_cannot_be_read_is_a_cancel() {
+        assert_eq!(
+            parse_pick(&json!({
+                "kind": "link", "url": "https://example.com/a", "shape": "/a/{num}", "count": 90_000
+            })),
+            Some(PagePick::Link {
+                url: "https://example.com/a".to_owned(),
+                shape: "/a/{num}".to_owned(),
+                count: MAX_SCAN_ITEMS,
+            })
+        );
+        let long_url = format!("https://example.com/{}", "x".repeat(MAX_URL_CHARS));
+        let long_shape = format!("/{}", "x".repeat(2_048));
+        for bad in [
+            json!("link"),
+            json!(5),
+            json!([]),
+            json!({}),
+            json!({ "kind": 3 }),
+            json!({ "kind": "teleport" }),
+            json!({ "kind": "link", "shape": "/a/{num}", "count": 3 }),
+            json!({ "kind": "link", "url": "https://example.com/a", "count": 3 }),
+            json!({ "kind": "link", "url": "https://example.com/a", "shape": "", "count": 3 }),
+            json!({ "kind": "link", "url": "https://example.com/a", "shape": "/a", "count": "3" }),
+            json!({ "kind": "link", "url": "https://example.com/a", "shape": "/a", "count": -3 }),
+            json!({ "kind": "link", "url": "javascript:alert(1)", "shape": "/a", "count": 3 }),
+            json!({ "kind": "link", "url": long_url, "shape": "/a", "count": 3 }),
+            json!({ "kind": "link", "url": "https://example.com/a", "shape": long_shape, "count": 3 }),
+            json!({ "kind": "image", "url": "data:image/png;base64,AAAA" }),
+            json!({ "kind": "image" }),
+        ] {
+            assert_eq!(parse_pick(&bad), Some(PagePick::Cancel), "{bad}");
+        }
+    }
+
+    #[test]
+    fn the_poll_asks_the_collector_the_page_already_has() {
+        assert_eq!(
+            poll_expression(false),
+            "window.__vdlCollector ? window.__vdlCollector.takeToggles() : []"
+        );
+        let picking = poll_expression(true);
+        assert!(picking.contains("takeToggles()"));
+        assert!(picking.contains("takePick()"));
+        // The page script is never evaluated again for a poll.
+        assert!(!picking.contains("function"));
+        assert!(!poll_expression(false).contains("function"));
+    }
+
+    #[test]
+    fn selection_goes_to_the_page_as_a_json_list_of_bounded_urls() {
+        assert_eq!(
+            set_selection_expression(&[]).unwrap(),
+            "window.__vdlCollector.setSelection([])"
+        );
+        let long = "x".repeat(MAX_URL_CHARS + 1);
+        assert_eq!(
+            set_selection_expression(&[
+                "https://example.com/a?b=\"c\"".to_owned(),
+                String::new(),
+                long,
+                "https://example.com/d".to_owned(),
+            ])
+            .unwrap(),
+            r#"window.__vdlCollector.setSelection(["https://example.com/a?b=\"c\"","https://example.com/d"])"#
+        );
+        let many = (0..MAX_SCAN_ITEMS + 10)
+            .map(|index| format!("https://example.com/{index}"))
+            .collect::<Vec<_>>();
+        let expression = set_selection_expression(&many).unwrap();
+        assert_eq!(expression.matches("https://").count(), MAX_SCAN_ITEMS);
+    }
+
+    #[test]
+    fn pick_mode_starts_with_the_app_language() {
+        assert_eq!(
+            pick_start_expression("en").unwrap(),
+            r#"window.__vdlCollector.startPick("en")"#
+        );
+        for other in ["ja", "fr", "", "en\");alert(1);(\""] {
+            assert_eq!(
+                pick_start_expression(other).unwrap(),
+                r#"window.__vdlCollector.startPick("ja")"#
+            );
+        }
+    }
+
+    #[test]
+    fn a_pressed_video_is_played_muted_by_its_position() {
+        let script = play_video_expression(3);
+        assert!(script.contains(r#"document.querySelectorAll("video")[3]"#));
+        assert!(script.contains("video.muted = true"));
+        assert!(script.contains("video.play()"));
+    }
+
+    fn played(url: &str) -> crate::browser::PlayedMedia {
+        crate::browser::PlayedMedia {
+            url: url.to_owned(),
+            kind: "HLS".to_owned(),
+            duration_seconds: None,
+        }
+    }
+
+    #[test]
+    fn a_pressed_video_gets_the_streams_that_were_not_played_before() {
+        let before = HashSet::from(["https://cdn.example.com/old.m3u8".to_owned()]);
+        let now = [
+            played("https://cdn.example.com/old.m3u8"),
+            played("https://cdn.example.com/new.m3u8"),
+        ];
+        assert_eq!(
+            fresh_streams(&now, &before, None),
+            vec!["https://cdn.example.com/new.m3u8"]
+        );
+        // Nothing new: nothing arrived.
+        assert!(fresh_streams(&now[..1], &before, None).is_empty());
+        // The video's own address counts even when it was played before.
+        assert_eq!(
+            fresh_streams(&now[..1], &before, Some("https://cdn.example.com/old.m3u8")),
+            vec!["https://cdn.example.com/old.m3u8"]
+        );
+        assert!(
+            fresh_streams(
+                &now[..1],
+                &before,
+                Some("https://cdn.example.com/other.mp4")
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn toggle_and_pick_events_serialize_for_the_tray() {
+        assert_eq!(
+            serde_json::to_value(CollectTogglesEvent {
+                toggles: vec![toggle("https://example.com/a", false)]
+            })
+            .unwrap(),
+            json!({ "toggles": [{ "url": "https://example.com/a", "selected": false }] })
+        );
+        let events = [
+            (CollectPickEvent::Active, json!({ "kind": "active" })),
+            (CollectPickEvent::Ended, json!({ "kind": "ended" })),
+            (CollectPickEvent::Finding, json!({ "kind": "finding" })),
+            (
+                CollectPickEvent::Link {
+                    url: "https://example.com/watch/3".to_owned(),
+                    shape: "/watch/{num}".to_owned(),
+                    count: 6,
+                },
+                json!({ "kind": "link", "url": "https://example.com/watch/3", "shape": "/watch/{num}", "count": 6 }),
+            ),
+            (
+                CollectPickEvent::Image {
+                    url: "https://example.com/a.png".to_owned(),
+                },
+                json!({ "kind": "image", "url": "https://example.com/a.png" }),
+            ),
+            (
+                CollectPickEvent::Video {
+                    urls: vec!["https://example.com/a.m3u8".to_owned()],
+                },
+                json!({ "kind": "video", "urls": ["https://example.com/a.m3u8"] }),
+            ),
+            (
+                CollectPickEvent::VideoNotFound,
+                json!({ "kind": "videoNotFound" }),
+            ),
+        ];
+        for (event, expected) in events {
+            assert_eq!(serde_json::to_value(event).unwrap(), expected);
+        }
     }
 }
