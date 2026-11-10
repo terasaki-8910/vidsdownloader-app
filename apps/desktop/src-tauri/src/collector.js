@@ -2,6 +2,8 @@
   const MARK_CLASS = "vdl-collector-found";
   const BADGE_CLASS = "vdl-collector-badge";
   const OFF_CLASS = "vdl-collector-off";
+  // On the card of an item the tray's filter hides: no outline and no badge (see hide()).
+  const HIDDEN_CLASS = "vdl-collector-hidden";
   const REVEAL_CLASS = "vdl-collector-reveal";
   const STYLE_ID = "vdl-collector-style";
   const PICK_STYLE_ID = "vdl-collector-pick-style";
@@ -18,6 +20,8 @@
   if (!memory.imageIndex) memory.imageIndex = new Map();
   // The item URLs the user has switched off; every other found item is selected.
   if (!memory.unselected) memory.unselected = new Set();
+  // The item URLs the tray's filter hides: their cards are not marked, whatever a scan finds.
+  if (!memory.hidden) memory.hidden = new Set();
   // Badge clicks not yet taken by the app, in order: { url, selected }.
   if (!memory.toggles) memory.toggles = [];
   // The item URL each marked card stands for (an item can have several cards).
@@ -606,7 +610,7 @@
   }
 
   function unmark(element) {
-    element.classList.remove(MARK_CLASS, OFF_CLASS);
+    element.classList.remove(MARK_CLASS, OFF_CLASS, HIDDEN_CLASS);
     for (const badge of element.querySelectorAll(`:scope > .${BADGE_CLASS}`)) badge.remove();
     // Undo only what mark() changed: a static element made relative for the badge.
     if (element.dataset.vdlStatic === "1") {
@@ -642,8 +646,20 @@
     }
   }
 
+  // A card of a hidden item has no outline and no badge, but is remembered (HIDDEN_CLASS, and
+  // memory.cardUrl for its item) so that showing the item again can mark it without a scan.
+  function hide(element) {
+    unmark(element);
+    element.classList.add(HIDDEN_CLASS);
+  }
+
   function mark(element, url) {
     memory.cardUrl.set(element, url);
+    if (memory.hidden.has(url)) {
+      hide(element);
+      return;
+    }
+    element.classList.remove(HIDDEN_CLASS);
     element.classList.add(MARK_CLASS);
     // An image cannot hold the badge; its outline is enough.
     if (element.tagName === "IMG") {
@@ -685,20 +701,29 @@
     paint(element);
   }
 
-  // The app's choice: the item URLs that are NOT selected. Cards already marked are redrawn.
-  // Clicks the app has not taken yet are newer than what it knows, so they are applied on top.
-  function setSelection(unselectedUrls) {
+  // The app's choice: the item URLs that are NOT selected, and the ones the tray's filter hides
+  // (their cards lose the outline and the badge; a card whose item is no longer hidden gets them
+  // back). Cards already marked are redrawn. Clicks the app has not taken yet are newer than what
+  // it knows, so they are applied on top.
+  function setSelection(unselectedUrls, hiddenUrls) {
     memory.unselected = new Set(Array.isArray(unselectedUrls) ? unselectedUrls : []);
+    memory.hidden = new Set(Array.isArray(hiddenUrls) ? hiddenUrls : []);
     for (const { url, selected } of memory.toggles) {
       if (selected) memory.unselected.delete(url);
       else memory.unselected.add(url);
     }
     let redrawn = 0;
-    for (const element of document.querySelectorAll(`.${MARK_CLASS}`)) {
-      paint(element);
+    for (const element of document.querySelectorAll(`.${MARK_CLASS}, .${HIDDEN_CLASS}`)) {
+      const url = memory.cardUrl.get(element);
+      if (url === undefined) continue;
+      const hidden = memory.hidden.has(url);
+      const wasHidden = element.classList.contains(HIDDEN_CLASS);
+      if (hidden && !wasHidden) hide(element);
+      else if (!hidden && wasHidden) mark(element, url);
+      else if (!hidden) paint(element);
       redrawn += 1;
     }
-    return { unselected: memory.unselected.size, redrawn };
+    return { unselected: memory.unselected.size, hidden: memory.hidden.size, redrawn };
   }
 
   // The badge clicks since the last call, oldest first.
@@ -706,9 +731,11 @@
     return memory.toggles.splice(0);
   }
 
-  // Cards a scan did not mark again lose their badge too.
+  // Cards a scan did not mark again (or hide again) lose their badge too.
   function dropStale(marked) {
-    for (const element of marked) if (!element.classList.contains(MARK_CLASS)) unmark(element);
+    for (const element of marked) {
+      if (!element.classList.contains(MARK_CLASS) && !element.classList.contains(HIDDEN_CLASS)) unmark(element);
+    }
   }
 
   // options: includeAds keeps ad cards in the result; mark: false leaves the page unmarked (the
@@ -719,8 +746,8 @@
     ensureStyle();
     // Take the outlines off before measuring and measure everything before marking, so the page
     // lays out once. The badges stay (see mark()); those of cards no longer marked go at the end.
-    const marked = [...document.querySelectorAll(`.${MARK_CLASS}`)];
-    for (const element of marked) element.classList.remove(MARK_CLASS, OFF_CLASS);
+    const marked = [...document.querySelectorAll(`.${MARK_CLASS}, .${HIDDEN_CLASS}`)];
+    for (const element of marked) element.classList.remove(MARK_CLASS, OFF_CLASS, HIDDEN_CLASS);
 
     const links = candidateLinks();
     assignShapes(links);
@@ -1213,8 +1240,9 @@
     if (memory.pickStop) memory.pickStop();
     memory.pickResult = null;
     memory.unselected = new Set();
+    memory.hidden = new Set();
     memory.toggles = [];
-    for (const element of document.querySelectorAll(`.${MARK_CLASS}`)) unmark(element);
+    for (const element of document.querySelectorAll(`.${MARK_CLASS}, .${HIDDEN_CLASS}`)) unmark(element);
     for (const element of document.querySelectorAll(`.${REVEAL_CLASS}`)) element.classList.remove(REVEAL_CLASS);
     memory.cards.clear();
     memory.imagesPage = null;

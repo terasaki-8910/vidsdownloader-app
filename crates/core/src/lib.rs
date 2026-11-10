@@ -13,6 +13,7 @@ pub mod filters;
 pub mod firefox;
 pub mod gallery_dl;
 pub mod item_files;
+pub mod item_meta;
 pub mod naming;
 pub mod niconico_guest;
 pub mod page_gate;

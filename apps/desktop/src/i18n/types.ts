@@ -473,6 +473,40 @@ export interface Translations {
     pickOnly: string;
     /** The line when no new stream showed for a pressed video. */
     pickNotFound: string;
+    /** The tray's filter and sort: the head button's name, the popover's labels and the sort orders. */
+    filterButton: string;
+    filterSort: string;
+    sortPage: string;
+    sortNewest: string;
+    sortOldest: string;
+    sortLongest: string;
+    sortShortest: string;
+    filterLength: string;
+    filterMin: string;
+    filterMax: string;
+    filterMinutes: string;
+    filterUploader: string;
+    uploadersMore: (count: number) => string;
+    uploadersLess: string;
+    filterDate: string;
+    filterDateFrom: string;
+    filterDateTo: string;
+    filterClear: string;
+    /** "n of m": the items shown out of the items found. */
+    filterCount: (shown: number, total: number) => string;
+    /** The count's tooltip: items left out only because yt-dlp did not say what a condition needs. */
+    filterNoInfo: (count: number) => string;
+    filterNoMatch: string;
+    /** The condition chips under the head, each with a button that removes it. */
+    chipLength: (min: string, max: string) => string;
+    chipUploaders: (first: string, others: number) => string;
+    chipFrom: (date: string) => string;
+    chipTo: (date: string) => string;
+    chipRange: (from: string, to: string) => string;
+    chipRemove: string;
+    /** The line while found items are being looked up with yt-dlp, and an item's own line before its turn. */
+    probing: (done: number, total: number) => string;
+    probingItem: string;
     addCollected: (count: number) => string;
     collectedAdded: string;
     saveRule: string;

@@ -19,6 +19,8 @@ import type {
   CollectLinks,
   CollectMethod,
   CollectPage,
+  CollectProbeMeta,
+  CollectProbeProgress,
   CollectState,
   Commands,
   EraseResult,
@@ -87,6 +89,7 @@ const listeners: { [K in keyof Events]: Set<(payload: Events[K]) => void> } = {
   "collect-state": new Set(),
   "collect-toggles": new Set(),
   "collect-pick": new Set(),
+  "collect-probe": new Set(),
   "flow-record-progress": new Set(),
   "flow-progress": new Set(),
   "sites-updated": new Set(),
@@ -1271,6 +1274,112 @@ const PLAYED_COLLECT: MockCollectPage = {
   },
 };
 
+// #mockCollect=filter (and #mockFilter): a search results page with 48 links. The mock's look-up
+// (collect_probe_start, below) answers for 42 of them with an uploader, a length and a date, and
+// fails for the other 6, so the sample filter (1-10 min, NASA + JAXA, from 2026-11-01) keeps exactly
+// 17 of the 48. Titles, uploaders, lengths and dates are fixed.
+const FILTER_PAGE_URL = "https://www.youtube.com/results?search_query=space&sp=CAI%3D";
+
+type FilterRow = readonly [title: string, uploader: string, length: string, month: number, day: number];
+
+// The 42 items the look-up answers for, in page order (the 6 it fails for are slotted in below).
+const FILTER_ROWS: FilterRow[] = [
+  ["Artemis II launch recap", "NASA", "3:12", 11, 3],
+  ["HTV-X1 berthing to the ISS", "JAXA", "4:10", 11, 7],
+  ["Ariane 6: payload fairing test", "ESA", "12:20", 10, 30],
+  ["Webb telescope: a new deep field", "NASA", "8:45", 11, 6],
+  ["Starship flight test, full replay", "SpaceX", "14:30", 11, 4],
+  ["Hayabusa2 sample: what we learned", "JAXA", "6:00", 11, 3],
+  ["Astronaut morning on the ISS", "NASA", "0:30", 11, 5],
+  ["Space Rider: first look inside", "ESA", "4:05", 11, 2],
+  ["Mars helicopter: the last flight", "NASA", "5:20", 11, 2],
+  ["Aurora seen from orbit (4K)", "Sora Lab", "5:40", 11, 8],
+  ["SLIM lunar lander, seen from above", "JAXA", "2:20", 11, 5],
+  ["Voyager 1 at 48 years: a full briefing", "NASA", "22:10", 10, 29],
+  ["Falcon 9 booster landing, 12 angles", "SpaceX", "8:00", 10, 22],
+  ["Euclid: mapping the dark universe", "ESA", "31:40", 10, 15],
+  ["How a rocket engine is tested", "JAXA", "9:30", 11, 1],
+  ["Cygnus resupply: capture and release", "NASA", "9:05", 11, 7],
+  ["宇宙のしくみ 入門", "宇宙チャンネル", "3:00", 11, 5],
+  ["Lunar south pole: what we know", "NASA", "1:15", 11, 1],
+  ["H3 rocket: the full launch broadcast", "JAXA", "15:40", 11, 6],
+  ["Gaia's map of the Milky Way", "ESA", "6:50", 11, 6],
+  ["Cassini's last dive, explained", "NASA", "4:40", 10, 31],
+  ["Dragon docking in 90 seconds", "SpaceX", "1:30", 11, 7],
+  ["Kibo module tour", "JAXA", "5:05", 11, 8],
+  ["Perseverance: sounds of Mars", "NASA", "6:30", 11, 4],
+  ["An ISS pass photo walk", "orbit_fan", "7:35", 10, 27],
+  ["Solar Orbiter: the Sun up close", "ESA", "2:10", 10, 8],
+  ["Moon rock sample opening", "JAXA", "3:30", 10, 25],
+  ["Artemis training, underwater", "NASA", "58:00", 10, 20],
+  ["Starlight live: Orion rising", "星空ライブ", "52:00", 11, 1],
+  ["James Webb: the first year in 60 seconds", "NASA", "2:50", 11, 8],
+  ["Rocket launch from Tanegashima, fan cam", "JAXA", "1:45", 11, 4],
+  ["Starship tower catch in slow motion", "SpaceX", "26:15", 10, 3],
+  ["Hubble: 35 years of images", "NASA", "7:15", 10, 12],
+  ["Rosetta: ten years on", "ESA", "45:00", 11, 3],
+  ["Astronaut Q&A from the ISS", "JAXA", "7:50", 11, 2],
+  ["Parker Solar Probe: the closest pass", "NASA", "10:00", 11, 5],
+  ["Eclipse chasers: a field diary", "Sora Lab", "19:20", 10, 17],
+  ["Hayabusa2 capsule: the return", "JAXA", "8:20", 11, 6],
+  ["Orion capsule splashdown", "NASA", "3:45", 11, 6],
+  ["宇宙ニュース 今週のまとめ", "宇宙チャンネル", "33:10", 10, 9],
+  ["Europa Clipper: the flyby plan", "NASA", "12:30", 11, 2],
+  ["Space weather today", "Orbit Daily", "0:45", 11, 6],
+];
+// Items the look-up fails for, and where they sit in the 48.
+const FILTER_BARE_TITLES = [
+  "Space station live view",
+  "Rocket launch countdown",
+  "Moon phase tonight",
+  "Telescope time-lapse",
+  "Meteor shower preview",
+  "Satellite pass tonight",
+];
+const FILTER_BARE_AT = [4, 11, 19, 27, 33, 41];
+
+function lengthSeconds(text: string): number {
+  const [minutes, seconds] = text.split(":").map(Number);
+  return minutes * 60 + seconds;
+}
+
+/** What the look-up finds for each of the filter page's links (an item that is not here fails). */
+const FILTER_META = new Map<string, CollectProbeMeta>();
+
+const FILTER_ITEMS: CollectItem[] = (() => {
+  const items: CollectItem[] = [];
+  let metaIndex = 0;
+  let bareIndex = 0;
+  for (let i = 0; i < 48; i++) {
+    const url = `https://www.youtube.com/watch?v=SpaceMock${String(i + 1).padStart(2, "0")}`;
+    let title: string;
+    if (FILTER_BARE_AT.includes(i)) {
+      title = FILTER_BARE_TITLES[bareIndex++];
+    } else {
+      const [rowTitle, uploader, length, month, day] = FILTER_ROWS[metaIndex++];
+      title = rowTitle;
+      FILTER_META.set(url, {
+        uploader,
+        durationS: lengthSeconds(length),
+        publishedAt: local(2026, month, day, (i * 5 + 7) % 24, (i * 13) % 60),
+      });
+    }
+    items.push({ url, title, thumbnail: `/mock-assets/page-${(i % 6) + 1}.jpg`, index: null });
+  }
+  return items;
+})();
+
+const FILTER_COLLECT: MockCollectPage = {
+  groups: [
+    { shape: "/watch?v={id}", count: FILTER_ITEMS.length },
+    { shape: "/shorts/{id}", count: 6 },
+  ],
+  defaultShape: "/watch?v={id}",
+  itemsFor: (shape) => (shape === "/shorts/{id}" ? FILTER_ITEMS.slice(0, 6) : FILTER_ITEMS),
+  adsExcluded: 0,
+  page: { title: "space - YouTube", uploader: null, publishedAt: null, id: null },
+};
+
 // #mockPick=empty: the same page, with no video played yet (the played-videos group is empty).
 const PLAYED_EMPTY_COLLECT: MockCollectPage = {
   groups: [
@@ -1285,6 +1394,7 @@ const PLAYED_EMPTY_COLLECT: MockCollectPage = {
 
 function mockCollectFor(url: string | null): MockCollectPage {
   if (url === IMAGES_PAGE_URL) return IMAGES_COLLECT;
+  if (url === FILTER_PAGE_URL) return FILTER_COLLECT;
   if (url === PLAYED_PAGE_URL) return readDebugHash().mockPick === "empty" ? PLAYED_EMPTY_COLLECT : PLAYED_COLLECT;
   return VIDEOS_COLLECT;
 }
@@ -1342,6 +1452,50 @@ function padCollectItems(items: CollectItem[], total: number): CollectItem[] {
     });
   }
   return padded;
+}
+
+// The look-up of the found items (collect_probe_*): one answer per item after MOCK_PROBE_MS, three
+// at a time, from FILTER_META; an item that is not there fails. Results are kept like the app does
+// (every URL once). #mockFilter=probing holds the look-up still at MOCK_PROBE_HOLD results.
+const MOCK_PROBE_MS = 100;
+const MOCK_PROBE_CONCURRENCY = 3;
+const MOCK_PROBE_HOLD = 12;
+const mockProbeCache = new Map<string, CollectProbeMeta | null>();
+let mockProbeQueue: string[] = [];
+let mockProbeRunning = 0;
+/** The URLs queued or running (a cancel forgets them). */
+let mockProbeBusy = new Set<string>();
+/** Counts the cancels, so a run that was cancelled reports nothing. */
+let mockProbeEpoch = 0;
+
+function mockProbeProgress(): CollectProbeProgress {
+  return { queued: mockProbeQueue.length, running: mockProbeRunning };
+}
+
+function mockProbePump(): void {
+  const hold = readDebugHash().mockFilter === "probing";
+  while (mockProbeRunning < MOCK_PROBE_CONCURRENCY && mockProbeQueue.length > 0) {
+    if (hold && mockProbeCache.size + mockProbeRunning >= MOCK_PROBE_HOLD) return;
+    const url = mockProbeQueue.shift() as string;
+    mockProbeRunning += 1;
+    const epoch = mockProbeEpoch;
+    setTimeout(() => {
+      mockProbeRunning -= 1;
+      if (epoch === mockProbeEpoch) {
+        const meta = FILTER_META.get(url) ?? null;
+        mockProbeBusy.delete(url);
+        mockProbeCache.set(url, meta);
+        emit("collect-probe", { url, meta, ...mockProbeProgress() });
+      }
+      mockProbePump();
+    }, MOCK_PROBE_MS);
+  }
+}
+
+function checkMockProbeUrls(urls: string[]): void {
+  if (urls.length > 2000 || urls.some((url) => url.length > 2048 || !/^https?:\/\//i.test(url))) {
+    throw new Error("every url must be an http(s) URL of at most 2048 characters");
+  }
 }
 
 function emitCollect(): void {
@@ -1468,12 +1622,14 @@ function parseHttpUrl(url: string): URL {
       siteId: null,
       accountId: null,
     };
-  } else if (hash.mockCollect || hash.mockScroll || hash.mockPick) {
-    const url = hash.mockCollect === "images"
-      ? IMAGES_PAGE_URL
-      : hash.mockCollect === "played" || hash.mockPick === "empty"
-        ? PLAYED_PAGE_URL
-        : "https://www.youtube.com/@BlenderFoundation/videos";
+  } else if (hash.mockCollect || hash.mockScroll || hash.mockPick || hash.mockFilter) {
+    const url = hash.mockCollect === "filter" || (!hash.mockCollect && hash.mockFilter)
+      ? FILTER_PAGE_URL
+      : hash.mockCollect === "images"
+        ? IMAGES_PAGE_URL
+        : hash.mockCollect === "played" || hash.mockPick === "empty"
+          ? PLAYED_PAGE_URL
+          : "https://www.youtube.com/@BlenderFoundation/videos";
     const siteId = siteIdForUrl(url);
     const site = sites.find((s) => s.id === siteId);
     browserState = {
@@ -2494,8 +2650,37 @@ async function dispatch(cmd: keyof Commands, args: unknown): Promise<unknown> {
     case "collect_reveal":
       return collectState?.items.some((item) => item.url === (args as Commands["collect_reveal"]["args"]).url) ?? false;
 
-    // The mock page has no badges to keep in step; the selection is only accepted.
-    case "collect_set_selection":
+    // The mock page has no badges to keep in step; the selection is only accepted. The newest one is
+    // kept on window for a script that checks what the tray sends (the DOM check of the filter).
+    case "collect_set_selection": {
+      const { unselected, hidden } = args as Commands["collect_set_selection"]["args"];
+      (window as unknown as { __mockSelection?: unknown }).__mockSelection = { unselected, hidden: hidden ?? [] };
+      return null;
+    }
+
+    case "collect_probe_start": {
+      const { urls } = args as Commands["collect_probe_start"]["args"];
+      checkMockProbeUrls(urls);
+      for (const url of urls) {
+        if (mockProbeCache.has(url) || mockProbeBusy.has(url)) continue;
+        mockProbeBusy.add(url);
+        mockProbeQueue.push(url);
+      }
+      mockProbePump();
+      return mockProbeProgress();
+    }
+
+    case "collect_probe_snapshot": {
+      const { urls } = args as Commands["collect_probe_snapshot"]["args"];
+      checkMockProbeUrls(urls);
+      const results = urls.flatMap((url) => (mockProbeCache.has(url) ? [{ url, meta: mockProbeCache.get(url) ?? null }] : []));
+      return { results, ...mockProbeProgress() };
+    }
+
+    case "collect_probe_cancel":
+      mockProbeEpoch += 1;
+      mockProbeQueue = [];
+      mockProbeBusy = new Set();
       return null;
 
     case "collect_pick_start": {

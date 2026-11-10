@@ -1,6 +1,7 @@
 mod account_commands;
 mod app_like;
 mod browser;
+mod collect_probe;
 mod collector;
 mod commands;
 mod comments_commands;
@@ -36,6 +37,7 @@ use crate::account_commands::{
     login_start, pick_cookies_file, site_add, site_for_url, site_remove, site_set_ad_block,
     sites_list,
 };
+use crate::collect_probe::{collect_probe_cancel, collect_probe_snapshot, collect_probe_start};
 use crate::collector::{
     collect_close, collect_pick_start, collect_pick_stop, collect_reload_find, collect_reveal,
     collect_save_rule, collect_select, collect_set_selection, collect_start, collect_stop,
@@ -150,6 +152,7 @@ fn initialize(app: &mut tauri::App<tauri::Wry>) -> Result<(), Box<dyn Error>> {
         installation_running: Arc::new(AtomicBool::new(false)),
         browser,
         collector,
+        collect_probe: collect_probe::create(app.handle()),
         flow,
         sources: Arc::clone(&sources),
         notifier: notifier.clone(),
@@ -241,6 +244,9 @@ pub fn run() {
             collect_set_selection,
             collect_pick_start,
             collect_pick_stop,
+            collect_probe_start,
+            collect_probe_snapshot,
+            collect_probe_cancel,
             collect_save_rule,
             methods_list,
             method_set_options,

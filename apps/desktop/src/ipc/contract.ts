@@ -336,6 +336,28 @@ export interface CollectItem {
   played?: { kind: "HLS" | "DASH" | "MP4" | "WebM" | "MOV"; durationSeconds: number | null };
 }
 
+/**
+ * What yt-dlp says about a found item, looked up while the tray's filter is open; a field is
+ * null when yt-dlp did not say. `publishedAt` is Unix seconds.
+ */
+export interface CollectProbeMeta {
+  uploader: string | null;
+  durationS: number | null;
+  publishedAt: number | null;
+}
+
+/** How much of the look-up is left: URLs waiting and runs going on. */
+export interface CollectProbeProgress {
+  queued: number;
+  running: number;
+}
+
+/** One found item's look-up; `meta` is null when it failed (any reason; not asked again this session). */
+export interface CollectProbeResult {
+  url: string;
+  meta: CollectProbeMeta | null;
+}
+
 /** Facts about the page itself, read the same way on every site; used to name page images. */
 export interface CollectPage {
   /** og:title, else the document title. */
@@ -663,10 +685,27 @@ export interface Commands {
   /** Scrolls the page to the item's card; false when the page no longer has it. */
   collect_reveal: { args: { url: string }; result: boolean };
   /**
-   * The tray's selection changed: the found items it has NOT selected, so the page's badges show
-   * the same checks (the page keeps clicks the app has not seen yet on top of this).
+   * The tray's selection changed: the found items it has NOT selected (the hidden ones among
+   * them), so the page's badges show the same checks (the page keeps clicks the app has not
+   * seen yet on top of this), and `hidden`, the items its filter hides (none when left out):
+   * they lose their outline and badge in the page and get them back once they are not hidden.
    */
-  collect_set_selection: { args: { unselected: string[] }; result: null };
+  collect_set_selection: { args: { unselected: string[]; hidden?: string[] }; result: null };
+  /**
+   * Looks the found items up with yt-dlp (one flat run each on the item's page, with the site's
+   * selected account's cookies; 3 at a time, 60 s each) for the tray's filter and sort. Only
+   * URLs that are not known, queued or running are queued; every result, failures included, is
+   * kept in memory by URL while the app runs and arrives as a "collect-probe" event. Rejects a
+   * URL that is not an http(s) URL of at most 2048 characters, and more than 2000 URLs.
+   */
+  collect_probe_start: { args: { urls: string[] }; result: CollectProbeProgress };
+  /** The results already known for those URLs (same limits as collect_probe_start), and the progress. */
+  collect_probe_snapshot: {
+    args: { urls: string[] };
+    result: CollectProbeProgress & { results: CollectProbeResult[] };
+  };
+  /** Empties the look-up queue and ends the runs going on (their results are dropped); known results are kept. */
+  collect_probe_cancel: { args: Record<string, never>; result: null };
   /**
    * Turns on pick mode in the page ("pick from the page"); the page's labels use `language`.
    * Stops a running auto-scroll first. Results come as "collect-pick" events.
@@ -771,6 +810,8 @@ export interface Events {
   /** Badges clicked in the page since the last event, oldest first (the app polls the page every 500 ms). */
   "collect-toggles": { toggles: CollectToggle[] };
   "collect-pick": CollectPick;
+  /** One look-up finished (meta null when it failed), with the progress after it. */
+  "collect-probe": CollectProbeResult & CollectProbeProgress;
   "flow-record-progress": { steps: number };
   "flow-progress": { done: number; total: number };
   /** The site list changed (sites, accounts or their login status). */

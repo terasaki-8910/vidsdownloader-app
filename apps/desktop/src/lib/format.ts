@@ -35,6 +35,11 @@ export function formatDate(unixSeconds: number): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
+/** Unix seconds -> "YYYY/MM/DD" in local time (the tray's per-item line). */
+export function formatSlashDate(unixSeconds: number): string {
+  return formatDate(unixSeconds).replace(/-/g, "/");
+}
+
 /** Unix seconds -> "MM/DD" in local time (login status lines). */
 export function formatMonthDay(unixSeconds: number): string {
   const d = new Date(unixSeconds * 1000);

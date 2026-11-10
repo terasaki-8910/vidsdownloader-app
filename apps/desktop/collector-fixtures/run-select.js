@@ -68,6 +68,27 @@
       off: offUrls(),
     };
 
+    // Items the tray's filter hides lose their outline and badge (and the position the badge
+    // needed); a scan does not mark them again; shown again they get both back, unchecked or not.
+    const marks = () => ({
+      badges: badges().map((badge) => badge.url),
+      marked: document.querySelectorAll(".vdl-collector-found").length,
+      off: offUrls(),
+      hiddenCards: document.querySelectorAll(".vdl-collector-hidden").length,
+      positioned: document.querySelectorAll("[data-vdl-static]").length,
+    });
+    collector.setSelection(
+      [absolute("/watch/2"), absolute("/watch/3")],
+      [absolute("/watch/3"), absolute("/watch/7")],
+    );
+    result.hidden = marks();
+    collector.scan(null);
+    result.hiddenRescan = marks();
+    collector.setSelection([absolute("/watch/2"), absolute("/watch/3")], [absolute("/watch/7")]);
+    result.hiddenPartly = marks();
+    collector.setSelection([absolute("/watch/2")], []);
+    result.shownAgain = marks();
+
     // Closing the session takes everything off the page and forgets the choices.
     collector.clear();
     result.afterClear = {

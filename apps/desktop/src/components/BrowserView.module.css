@@ -527,8 +527,10 @@
   padding: 0 8px;
 }
 
-/* The tray's head row: the group select, then the button that picks from the page. */
+/* The tray's head row: the group select, then the filter button and the button that picks from the
+   page. The filter popover opens under it, so the row is its positioning box. */
 .groupRow {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -538,6 +540,96 @@
   flex: 1;
   width: auto;
   margin-right: 4px;
+}
+
+.groupRow button.filterBtn {
+  position: relative;
+}
+
+.groupRow button.filterOn,
+.groupRow button.filterOn:hover:not(:disabled) {
+  color: var(--accent-ink);
+}
+
+.filterDot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 1.5px var(--surface);
+}
+
+/* Under the head: the filter's chips or the look-up progress. */
+.filterStrip {
+  flex: none;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.filterChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 24px;
+  padding: 0 3px 0 10px;
+  border-radius: 999px;
+  background: var(--accent-fill);
+  color: var(--accent-ink);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.filterChip button.chipX {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  color: var(--accent-ink);
+}
+
+.filterChip button.chipX:hover:not(:disabled) {
+  background: var(--accent-fill);
+  color: var(--accent-ink);
+}
+
+.chipCount {
+  margin-left: 2px;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.probeText {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.probeBar {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--track);
+  overflow: hidden;
+}
+
+.probeBar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
 }
 
 .adsNote,

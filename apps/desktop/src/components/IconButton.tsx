@@ -1,4 +1,4 @@
-import type { MouseEventHandler, ReactNode } from "react";
+import type { MouseEventHandler, ReactNode, Ref } from "react";
 import styles from "./IconButton.module.css";
 
 interface IconButtonProps {
@@ -12,6 +12,10 @@ interface IconButtonProps {
   tabIndex?: number;
   /** A toggle button's state (aria-pressed); the pressed button is tinted with the accent. */
   pressed?: boolean;
+  /** For a button that opens a popover: its open state and kind. */
+  expanded?: boolean;
+  popup?: "dialog" | "menu";
+  ref?: Ref<HTMLButtonElement>;
 }
 
 export function IconButton({
@@ -23,13 +27,19 @@ export function IconButton({
   size = "md",
   tabIndex,
   pressed,
+  expanded,
+  popup,
+  ref,
 }: IconButtonProps) {
   return (
     <button
+      ref={ref}
       type="button"
       aria-label={label}
       title={label}
       aria-pressed={pressed}
+      aria-expanded={expanded}
+      aria-haspopup={popup}
       onClick={onClick}
       disabled={disabled}
       tabIndex={tabIndex}

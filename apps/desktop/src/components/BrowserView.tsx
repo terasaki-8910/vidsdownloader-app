@@ -7,6 +7,7 @@ import {
   KeyRound,
   LayoutGrid,
   LayoutList,
+  ListFilter,
   LocateFixed,
   Lock,
   MousePointerClick,
@@ -15,13 +16,37 @@ import {
   RotateCw,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
-import type { CollectState, Flow, FlowReplayItem, FlowScope, SavedFlow, SavedPage } from "../ipc/contract";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import type {
+  CollectItem,
+  CollectProbeMeta,
+  CollectProbeProgress,
+  CollectState,
+  Flow,
+  FlowReplayItem,
+  FlowScope,
+  SavedFlow,
+  SavedPage,
+} from "../ipc/contract";
 import { ipc, usesMockIpc } from "../ipc";
 import { useT } from "../i18n/I18nContext";
 import type { Translations } from "../i18n/types";
 import { IMAGES_SHAPE, PLAYED_SHAPE } from "../lib/collect";
+import {
+  NO_FILTER,
+  SAMPLE_FILTER,
+  applyFilter,
+  filterActive,
+  filterConditions,
+  lengthBounds,
+  monthDay,
+  sortLabel,
+  uploaderCounts,
+  type MetaOf,
+  type TrayFilter,
+} from "../lib/collectFilter";
 import { readDebugHash } from "../lib/debugHash";
+import { formatSlashDate } from "../lib/format";
 import { nextFrame } from "../lib/frame";
 import { defaultSavedPageName, savedPageUrl } from "../lib/savedPages";
 import { selectedAccount, siteForUrl, siteHomeUrl, siteStartStatus } from "../lib/sites";
@@ -33,6 +58,7 @@ import { useSettings } from "../state/SettingsContext";
 import { useSites } from "../state/SitesContext";
 import { useSources } from "../state/SourcesContext";
 import { AddressTools } from "./AddressTools";
+import { FilterPopover } from "./FilterPopover";
 import { IconButton } from "./IconButton";
 import { ImportOffer } from "./ImportOffer";
 import { PageImagesTray } from "./PageImagesTray";
@@ -46,6 +72,10 @@ const FLOW_MISMATCH_PREFIX = "flow-step-mismatch:";
 const LINK_COPIED_MS = 1600;
 /** The tray's checks go to the page's badges at most this often. */
 const SELECTION_SYNC_MS = 150;
+/** The most URLs one look-up call takes (a collect session never holds more). */
+const PROBE_BATCH = 2000;
+/** The longest URL the look-up takes. */
+const PROBE_URL_CHARS = 2048;
 
 /** Where the element picker is: not picking, waiting for a press in the page, or looking for a pressed video's stream. */
 type PickPhase = "off" | "active" | "finding";
@@ -105,7 +135,8 @@ export function BrowserView({ onOpenSites }: BrowserViewProps) {
   const [pickNotFound, setPickNotFound] = useState(false);
   const pickSelection = useRef<PickSelection | null>(null);
   const latestCollect = useRef<CollectState | null>(null);
-  const lastSentUnselected = useRef("");
+  /** What the page was last told about the selection (unchecked and hidden items); "" when nothing. */
+  const lastSentSelection = useRef("");
   const chooseGroupRef = useRef<(shape: string, only: string[] | null) => Promise<void>>(async () => {});
   // Items the page has dropped since they were found (virtualized lists), so "show on page" is off.
   const [goneUrls, setGoneUrls] = useState<Record<string, true>>({});
@@ -148,22 +179,55 @@ export function BrowserView({ onOpenSites }: BrowserViewProps) {
   const [savedPages, setSavedPages] = useState<SavedPage[]>([]);
   /** The toolbar's copy-link button shows a check for a moment after the link was copied. */
   const [linkCopied, setLinkCopied] = useState(false);
+  // The tray's filter and sort. Opening the popover for the first time in a collect session starts
+  // looking the found items up with yt-dlp (the app runs three at a time) and the tray filters on
+  // what has come back so far. The session ending (the tray closed, another page) resets all of it.
+  const [debug] = useState(readDebugHash);
+  const [filter, setFilter] = useState<TrayFilter>(() =>
+    usesMockIpc && (debug.mockFilter === "open" || debug.mockFilter === "active") ? SAMPLE_FILTER : NO_FILTER,
+  );
+  const [filterOpen, setFilterOpen] = useState(() => usesMockIpc && debug.mockFilter === "open");
+  /** The popover has been opened in this collect session: the found items are being looked up. */
+  const [probeAsked, setProbeAsked] = useState(() => usesMockIpc && debug.mockFilter !== undefined);
+  const [probeResults, setProbeResults] = useState<ReadonlyMap<string, CollectProbeMeta | null>>(() => new Map());
+  const [probeProgress, setProbeProgress] = useState<CollectProbeProgress>({ queued: 0, running: 0 });
+  /** The found URLs already given to the look-up in this session; each goes once. */
+  const probeSent = useRef(new Set<string>());
+  /** Counts the sessions that ended, so an answer that comes back late is dropped. */
+  const probeEpoch = useRef(0);
+  const filterButtonRef = useRef<HTMLButtonElement>(null);
+  const lastPageUrl = useRef(browser.url);
 
   const isLogin = browser.mode === "login";
   const pageOpen = browser.url !== null;
   const site = sites.find((s) => s.id === browser.siteId) ?? null;
-  const collectSelectedCount = collect?.items.filter((item) => selectedUrls[item.url] !== false).length ?? 0;
+  // The page's own images are saved directly (one job for the page), not queued as links.
+  const imagesChosen = collect?.shape === IMAGES_SHAPE;
+  const playedChosen = collect?.shape === PLAYED_SHAPE;
+  // What yt-dlp has said about each found item so far. The filter and the sort run on links to
+  // pages; the page's images and the played streams are listed as they are.
+  const metaOf: MetaOf = useCallback((item) => probeResults.get(item.url), [probeResults]);
+  const filterable = collect !== null && !imagesChosen && !playedChosen;
+  const filtered = useMemo(
+    () => (collect && filterable ? applyFilter(collect.items, filter, metaOf) : null),
+    [collect, filterable, filter, metaOf],
+  );
+  // The items the tray lists, counts and queues: all of them, or those the filter keeps, in its order.
+  const shownItems = filtered ? filtered.shown : (collect?.items ?? []);
+  const uploaders = useMemo(() => uploaderCounts(collect?.items ?? [], metaOf), [collect, metaOf]);
+  const collectSelectedCount = shownItems.filter((item) => selectedUrls[item.url] !== false).length;
   const flowSelectableCount = flowResults.filter((item) => item.media !== null).length;
   const flowSelectedCount = flowResults.filter((item, index) => item.media && selectedFlowResults[index] !== false).length;
   const selectedCount = collectSelectedCount + flowSelectedCount;
-  const selectableCount = (collect?.items.length ?? 0) + flowSelectableCount;
+  const selectableCount = shownItems.length + flowSelectableCount;
   const allSelected = selectableCount > 0 && selectedCount === selectableCount;
   const trayOpen = collect !== null || flow !== null || (savedFlows.length > 0 && !savedFlowsDismissed);
   const trayItemCount = (collect?.items.length ?? 0) + flowResults.length;
   const scrollAction = collect ? scrollButton(collect, t.browser) : null;
-  // The page's own images are saved directly (one job for the page), not queued as links.
-  const imagesChosen = collect?.shape === IMAGES_SHAPE;
-  const playedChosen = collect?.shape === PLAYED_SHAPE;
+  const closeFilter = useCallback(() => setFilterOpen(false), []);
+  /** Found items whose look-up has not come back, while the app is still at it. */
+  const probing = probeAsked && probeProgress.queued + probeProgress.running > 0;
+  const probedCount = collect ? collect.items.filter((item) => probeResults.has(item.url)).length : 0;
   // A rule source is a page with a link shape: registering one is per page and per shape.
   const sourceKey = browser.url && collect?.shape && !playedChosen ? `${browser.url}
 ${collect.shape}` : null;
@@ -340,19 +404,59 @@ ${collect.shape}` : null;
     [],
   );
 
-  // The tray's checks go to the page's badges: the items that are not checked, a moment after the
-  // last change. A list that has unchecked items is sent again with every state, since a page
-  // that was loaded again has forgotten it.
+  // The tray's checks go to the page's badges: the items that are not going to the queue (unchecked,
+  // or hidden by the filter) and the hidden ones, which lose their outline and badge in the page, a
+  // moment after the last change. A list that has unchecked or hidden items is sent again with every
+  // state, since a page that was loaded again has forgotten it.
   useEffect(() => {
     if (!collect) return undefined;
-    const unselected = collect.items.filter((item) => selectedUrls[item.url] === false).map((item) => item.url);
+    const shown = filtered ? new Set(filtered.shown.map((item) => item.url)) : null;
+    const hidden = shown ? collect.items.filter((item) => !shown.has(item.url)).map((item) => item.url) : [];
+    const hiddenSet = new Set(hidden);
+    const unselected = collect.items
+      .filter((item) => hiddenSet.has(item.url) || selectedUrls[item.url] === false)
+      .map((item) => item.url);
     const timer = window.setTimeout(() => {
-      if (unselected.length === 0 && lastSentUnselected.current === "") return;
-      lastSentUnselected.current = unselected.join("\n");
-      void ipc.call("collect_set_selection", { unselected }).catch(() => {});
+      const nothing = unselected.length === 0 && hidden.length === 0;
+      if (nothing && lastSentSelection.current === "") return;
+      lastSentSelection.current = nothing ? "" : `${unselected.join("\n")}\u0000${hidden.join("\n")}`;
+      void ipc.call("collect_set_selection", { unselected, hidden }).catch(() => {});
     }, SELECTION_SYNC_MS);
     return () => window.clearTimeout(timer);
-  }, [collect, selectedUrls]);
+  }, [collect, selectedUrls, filtered]);
+
+  // Each finished look-up of a found item (null when it failed) and how much is left.
+  useEffect(
+    () =>
+      ipc.on("collect-probe", (event) => {
+        setProbeResults((previous) => new Map(previous).set(event.url, event.meta));
+        setProbeProgress({ queued: event.queued, running: event.running });
+      }),
+    [],
+  );
+
+  // Looks up the found items once the popover has been opened: those not given yet go to the app,
+  // which skips what it knows, and what it knows already comes back at once. Items found later (the
+  // auto-scroll) follow as they appear.
+  useEffect(() => {
+    if (!probeAsked || !collect || !filterable) return;
+    const urls = probeableUrls(collect.items).filter((url) => !probeSent.current.has(url));
+    if (urls.length === 0) return;
+    for (const url of urls) probeSent.current.add(url);
+    void probeFound(urls);
+  }, [probeAsked, collect, filterable]);
+
+  // Leaving the page the session was on ends the session: the look-up stops and the filter is gone.
+  useEffect(() => {
+    const previous = lastPageUrl.current;
+    lastPageUrl.current = browser.url;
+    if (previous !== null && previous !== browser.url) endFilterSession();
+  }, [browser.url]);
+
+  // The popover belongs to a list of links; a group of images or played streams has none.
+  useEffect(() => {
+    if (collect !== null && !filterable) setFilterOpen(false);
+  }, [collect, filterable]);
 
   // A pressed link or a missing video belongs to the page it was pressed on.
   useEffect(() => {
@@ -404,7 +508,7 @@ ${collect.shape}` : null;
   // receives it so screenshot URLs need no scripted click.
   useEffect(() => {
     const debug = readDebugHash();
-    if (!usesMockIpc || !(debug.mockCollect || debug.mockScroll || debug.mockPick) || debugCollectApplied.current || !browser.url || browser.loading) return;
+    if (!usesMockIpc || !(debug.mockCollect || debug.mockScroll || debug.mockPick || debug.mockFilter) || debugCollectApplied.current || !browser.url || browser.loading) return;
     debugCollectApplied.current = true;
     void startCollectRef.current();
   }, [browser.loading, browser.url]);
@@ -732,7 +836,8 @@ ${collect.shape}` : null;
       setCollect(null);
       latestCollect.current = null;
       pickSelection.current = null;
-      lastSentUnselected.current = "";
+      lastSentSelection.current = "";
+      endFilterSession();
       setPickPhase("off");
       setPickedLink(null);
       setPickNotFound(false);
@@ -755,9 +860,73 @@ ${collect.shape}` : null;
     }
   }
 
+  /** The collect session is over (the tray closed, another page): the look-up stops and the filter goes back to none. */
+  function endFilterSession() {
+    probeEpoch.current += 1;
+    probeSent.current = new Set();
+    setFilter(NO_FILTER);
+    setFilterOpen(false);
+    setProbeAsked(false);
+    setProbeResults(new Map());
+    setProbeProgress({ queued: 0, running: 0 });
+    void ipc.call("collect_probe_cancel", {}).catch(() => {});
+  }
+
+  /** The head's filter button: the first opening in a session starts the look-up (see the effect on probeAsked). */
+  function toggleFilter() {
+    if (filterOpen) {
+      setFilterOpen(false);
+      return;
+    }
+    setFilterOpen(true);
+    if (probeAsked) void refreshProbe();
+    else setProbeAsked(true);
+  }
+
+  /** Takes what the app knows about the found items (also what an earlier session looked up) and how much is left. */
+  async function refreshProbe() {
+    if (!collect) return;
+    const epoch = probeEpoch.current;
+    try {
+      const known = await ipc.call("collect_probe_snapshot", { urls: probeableUrls(collect.items).slice(0, PROBE_BATCH) });
+      if (epoch !== probeEpoch.current) return;
+      takeProbeResults(known.results);
+      setProbeProgress({ queued: known.queued, running: known.running });
+    } catch (error) {
+      setLocalError(errorMessage(error));
+    }
+  }
+
+  function takeProbeResults(results: { url: string; meta: CollectProbeMeta | null }[]) {
+    if (results.length === 0) return;
+    setProbeResults((previous) => {
+      const next = new Map(previous);
+      for (const result of results) next.set(result.url, result.meta);
+      return next;
+    });
+  }
+
+  /** Gives found URLs to the look-up: what the app knows already comes back at once, the rest is looked up. */
+  async function probeFound(urls: string[]) {
+    const epoch = probeEpoch.current;
+    try {
+      for (let at = 0; at < urls.length; at += PROBE_BATCH) {
+        const batch = urls.slice(at, at + PROBE_BATCH);
+        const known = await ipc.call("collect_probe_snapshot", { urls: batch });
+        if (epoch !== probeEpoch.current) return;
+        takeProbeResults(known.results);
+        const progress = await ipc.call("collect_probe_start", { urls: batch });
+        if (epoch !== probeEpoch.current) return;
+        setProbeProgress(progress);
+      }
+    } catch (error) {
+      setLocalError(errorMessage(error));
+    }
+  }
+
   async function addCollected() {
     if (!settings) return;
-    const chosen = collect?.items.filter((item) => selectedUrls[item.url] !== false) ?? [];
+    const chosen = shownItems.filter((item) => selectedUrls[item.url] !== false);
     const chosenFlow = flowResults.filter((item, index) => item.media && selectedFlowResults[index] !== false);
     if (chosen.length === 0 && chosenFlow.length === 0) return;
     try {
@@ -807,10 +976,11 @@ ${collect.shape}` : null;
   }
 
   function setAllSelected(checked: boolean) {
+    // The row stands for the items the tray lists: the ones a filter hides keep their checks.
     if (collect) {
       setSelectedUrls((previous) => {
         const next = { ...previous };
-        for (const item of collect.items) next[item.url] = checked;
+        for (const item of shownItems) next[item.url] = checked;
         return next;
       });
     }
@@ -878,6 +1048,47 @@ ${collect.shape}` : null;
   const pageSaved = browser.url !== null && savedPages.some((page) => page.url === savedPageUrl(browser.url ?? ""));
   const loginSiteName = site?.name ?? (browser.url ? safeHost(browser.url) : "");
   const message = localError ?? (browserError ? t.browser.failed(browserError) : null);
+
+  // The chips under the head: one per condition that is set, each removes its condition.
+  const filterChips: { key: string; label: string; remove: () => void }[] = [];
+  if (collect && filtered) {
+    const conditions = filterConditions(filter);
+    const { min, max } = lengthBounds(filter);
+    if (conditions.length) {
+      filterChips.push({
+        key: "length",
+        label: t.browser.chipLength(min === null ? "" : String(min), max === null ? "" : String(max)),
+        remove: () => setFilter({ ...filter, minMinutes: "", maxMinutes: "" }),
+      });
+    }
+    if (conditions.uploaders) {
+      filterChips.push({
+        key: "uploaders",
+        label: t.browser.chipUploaders(filter.uploaders[0], filter.uploaders.length - 1),
+        remove: () => setFilter({ ...filter, uploaders: [] }),
+      });
+    }
+    if (conditions.from || conditions.to) {
+      filterChips.push({
+        key: "date",
+        label:
+          conditions.from && conditions.to
+            ? t.browser.chipRange(monthDay(filter.from), monthDay(filter.to))
+            : conditions.from
+              ? t.browser.chipFrom(monthDay(filter.from))
+              : t.browser.chipTo(monthDay(filter.to)),
+        remove: () => setFilter({ ...filter, from: "", to: "" }),
+      });
+    }
+    if (filter.sort !== "page") {
+      filterChips.push({
+        key: "sort",
+        label: sortLabel(t, filter.sort),
+        remove: () => setFilter({ ...filter, sort: "page" }),
+      });
+    }
+  }
+  const filterOn = filterActive(filter);
 
   return (
     <section className={styles.browser}>
@@ -1086,6 +1297,20 @@ ${collect.shape}` : null;
                       </option>
                     ))}
                   </select>
+                  {filterable && collect.items.length > 0 && (
+                    <IconButton
+                      ref={filterButtonRef}
+                      size="sm"
+                      label={t.browser.filterButton}
+                      className={`${styles.filterBtn} ${filterOn ? styles.filterOn : ""}`}
+                      popup="dialog"
+                      expanded={filterOpen}
+                      onClick={toggleFilter}
+                    >
+                      <ListFilter size={16} aria-hidden />
+                      {filterOn && <span className={styles.filterDot} aria-hidden />}
+                    </IconButton>
+                  )}
                   <IconButton
                     size="sm"
                     label={t.browser.pickButton}
@@ -1094,6 +1319,17 @@ ${collect.shape}` : null;
                   >
                     <Crosshair size={16} aria-hidden />
                   </IconButton>
+                  {filterOpen && filtered && (
+                    <FilterPopover
+                      filter={filter}
+                      onChange={setFilter}
+                      uploaders={uploaders}
+                      total={collect.items.length}
+                      shown={filtered.shown.length}
+                      buttonRef={filterButtonRef}
+                      onClose={closeFilter}
+                    />
+                  )}
                 </div>
               )}
               {collect && <div className={styles.reloadFindLine}>
@@ -1159,6 +1395,43 @@ ${collect.shape}` : null;
                 <p className={styles.adsNote} role="status">
                   {t.browser.pickNotFound}
                 </p>
+              </div>
+            )}
+
+            {collect && filtered && probing && (
+              <div className={styles.filterStrip}>
+                <span className={styles.probeText}>{t.browser.probing(probedCount, collect.items.length)}</span>
+                <div
+                  className={styles.probeBar}
+                  role="progressbar"
+                  aria-label={t.browser.probing(probedCount, collect.items.length)}
+                  aria-valuemin={0}
+                  aria-valuemax={collect.items.length}
+                  aria-valuenow={probedCount}
+                >
+                  <span style={{ width: `${(probedCount / Math.max(1, collect.items.length)) * 100}%` }} />
+                </div>
+              </div>
+            )}
+
+            {collect && filtered && filterChips.length > 0 && (
+              <div className={styles.filterStrip}>
+                <ul className={styles.chips}>
+                  {filterChips.map((chip) => (
+                    <li key={chip.key} className={styles.filterChip}>
+                      <span>{chip.label}</span>
+                      <IconButton size="sm" label={t.browser.chipRemove} className={styles.chipX} onClick={chip.remove}>
+                        <X size={12} aria-hidden />
+                      </IconButton>
+                    </li>
+                  ))}
+                  <li
+                    className={styles.chipCount}
+                    title={filtered.noInfo > 0 ? t.browser.filterNoInfo(filtered.noInfo) : undefined}
+                  >
+                    {t.browser.filterCount(filtered.shown.length, collect.items.length)}
+                  </li>
+                </ul>
               </div>
             )}
 
@@ -1324,6 +1597,10 @@ ${collect.shape}` : null;
                   {t.browser.pickButton}
                 </button>
               </div>
+            ) : shownItems.length === 0 ? (
+              <div className={styles.emptyArea}>
+                <p>{t.browser.filterNoMatch}</p>
+              </div>
             ) : imagesChosen ? (
               <PageImagesTray
                 items={collect.items}
@@ -1333,7 +1610,7 @@ ${collect.shape}` : null;
               />
             ) : (
               <ul className={styles.foundList}>
-                {collect.items.map((item) => (
+                {shownItems.map((item) => (
                   <li key={item.url}>
                     <label>
                       <input
@@ -1348,6 +1625,9 @@ ${collect.shape}` : null;
                         <span title={item.title || item.url}>{item.title || item.url}</span>
                         {item.played && (
                           <p className={styles.adsNote}>{playedMeta(item.url, item.played.kind, item.played.durationSeconds)}</p>
+                        )}
+                        {probeAsked && !item.played && (
+                          <ItemMeta meta={probeResults.get(item.url)} pending={probing} />
                         )}
                       </div>
                     </label>
@@ -1430,6 +1710,28 @@ ${collect.shape}` : null;
       </div>
     </section>
   );
+}
+
+/**
+ * The second line of a found item: "NASA · 3:12 · 2026/11/03", only the parts yt-dlp told. An item
+ * whose look-up has not come back (undefined) says so while the app is still at it; one that failed
+ * (null) has no line.
+ */
+function ItemMeta({ meta, pending }: { meta: CollectProbeMeta | null | undefined; pending: boolean }) {
+  const t = useT();
+  if (meta === undefined) return pending ? <p className={styles.adsNote}>{t.browser.probingItem}</p> : null;
+  if (meta === null) return null;
+  const parts = [
+    meta.uploader,
+    meta.durationS != null ? formatDuration(meta.durationS) : null,
+    meta.publishedAt != null ? formatSlashDate(meta.publishedAt) : null,
+  ].filter((part): part is string => part !== null);
+  return parts.length > 0 ? <p className={styles.adsNote}>{parts.join(" · ")}</p> : null;
+}
+
+/** The found items' URLs the look-up takes: http(s) addresses of a length it accepts. */
+function probeableUrls(items: CollectItem[]): string[] {
+  return items.map((item) => item.url).filter((url) => url.length <= PROBE_URL_CHARS && /^https?:\/\//i.test(url));
 }
 
 /** The tray's status line for the auto-scroll: what it is doing, or why it is not, and how many items it found. */

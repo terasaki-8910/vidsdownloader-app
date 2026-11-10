@@ -643,12 +643,17 @@ impl CollectorManager {
     }
 
     /// Tells the page which found items the tray has not selected, so its badges show the same
-    /// checks. Does nothing when no session is open on the page that is showing.
-    pub async fn set_selection(&self, unselected: Vec<String>) -> Result<(), String> {
+    /// checks, and which ones the tray's filter hides (no outline, no badge). Does nothing when
+    /// no session is open on the page that is showing.
+    pub async fn set_selection(
+        &self,
+        unselected: Vec<String>,
+        hidden: Vec<String>,
+    ) -> Result<(), String> {
         if !self.session_on_current_page() {
             return Ok(());
         }
-        let expression = set_selection_expression(&unselected)?;
+        let expression = set_selection_expression(&unselected, &hidden)?;
         self.browser
             .execute(&format!("{COLLECTOR_SCRIPT}\n{expression}"))
             .await?;
@@ -1461,13 +1466,19 @@ pub async fn collect_reveal(url: String, state: State<'_, AppState>) -> Result<b
     state.collector.reveal(url).await
 }
 
-/// The tray's selection changed: the page's badges follow (the item URLs that are not selected).
+/// The tray's selection changed: the page's badges follow (the item URLs that are not selected,
+/// which include the hidden ones) and the items the tray's filter hides (`hidden`, none when
+/// left out) lose their outline and badge until they are shown again.
 #[tauri::command]
 pub async fn collect_set_selection(
     unselected: Vec<String>,
+    hidden: Option<Vec<String>>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    state.collector.set_selection(unselected).await
+    state
+        .collector
+        .set_selection(unselected, hidden.unwrap_or_default())
+        .await
 }
 
 #[tauri::command]
@@ -1677,15 +1688,23 @@ fn poll_expression(picking: bool) -> &'static str {
     }
 }
 
-/// The unselected URLs go into the page as a JSON array; only plain bounded strings are sent.
-fn set_selection_expression(unselected: &[String]) -> Result<String, String> {
-    let urls = unselected
+/// The unselected and the hidden URLs go into the page as two JSON arrays; only plain bounded
+/// strings are sent.
+fn set_selection_expression(unselected: &[String], hidden: &[String]) -> Result<String, String> {
+    let unselected = bounded_url_list(unselected)?;
+    let hidden = bounded_url_list(hidden)?;
+    Ok(format!(
+        "window.__vdlCollector.setSelection({unselected},{hidden})"
+    ))
+}
+
+fn bounded_url_list(urls: &[String]) -> Result<String, String> {
+    let urls = urls
         .iter()
         .filter(|url| !url.is_empty() && url.chars().count() <= MAX_URL_CHARS)
         .take(MAX_SCAN_ITEMS)
         .collect::<Vec<_>>();
-    let urls = serde_json::to_string(&urls).map_err(|error| error.to_string())?;
-    Ok(format!("window.__vdlCollector.setSelection({urls})"))
+    serde_json::to_string(&urls).map_err(|error| error.to_string())
 }
 
 /// The page's labels follow the app's language ("en", else Japanese).
@@ -2720,24 +2739,50 @@ mod tests {
     #[test]
     fn selection_goes_to_the_page_as_a_json_list_of_bounded_urls() {
         assert_eq!(
-            set_selection_expression(&[]).unwrap(),
-            "window.__vdlCollector.setSelection([])"
+            set_selection_expression(&[], &[]).unwrap(),
+            "window.__vdlCollector.setSelection([],[])"
         );
         let long = "x".repeat(MAX_URL_CHARS + 1);
         assert_eq!(
-            set_selection_expression(&[
-                "https://example.com/a?b=\"c\"".to_owned(),
-                String::new(),
-                long,
-                "https://example.com/d".to_owned(),
-            ])
+            set_selection_expression(
+                &[
+                    "https://example.com/a?b=\"c\"".to_owned(),
+                    String::new(),
+                    long,
+                    "https://example.com/d".to_owned(),
+                ],
+                &[]
+            )
             .unwrap(),
-            r#"window.__vdlCollector.setSelection(["https://example.com/a?b=\"c\"","https://example.com/d"])"#
+            r#"window.__vdlCollector.setSelection(["https://example.com/a?b=\"c\"","https://example.com/d"],[])"#
         );
         let many = (0..MAX_SCAN_ITEMS + 10)
             .map(|index| format!("https://example.com/{index}"))
             .collect::<Vec<_>>();
-        let expression = set_selection_expression(&many).unwrap();
+        let expression = set_selection_expression(&many, &[]).unwrap();
+        assert_eq!(expression.matches("https://").count(), MAX_SCAN_ITEMS);
+    }
+
+    #[test]
+    fn hidden_urls_go_into_the_page_as_a_second_bounded_list() {
+        let long = "x".repeat(MAX_URL_CHARS + 1);
+        assert_eq!(
+            set_selection_expression(
+                &["https://example.com/a".to_owned()],
+                &[
+                    "https://example.com/b".to_owned(),
+                    String::new(),
+                    long,
+                    "https://example.com/c\"d".to_owned(),
+                ]
+            )
+            .unwrap(),
+            r#"window.__vdlCollector.setSelection(["https://example.com/a"],["https://example.com/b","https://example.com/c\"d"])"#
+        );
+        let many = (0..MAX_SCAN_ITEMS + 10)
+            .map(|index| format!("https://example.com/{index}"))
+            .collect::<Vec<_>>();
+        let expression = set_selection_expression(&[], &many).unwrap();
         assert_eq!(expression.matches("https://").count(), MAX_SCAN_ITEMS);
     }
 

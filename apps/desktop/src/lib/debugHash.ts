@@ -8,6 +8,14 @@
 // is the played-videos group with nothing played (the empty-state line and its button), "active"
 // the links tray while picking (banner, pressed head button, the mock page's pointer label), and
 // "picked" the links tray with the result of pressing a link (the two choices).
+// #view=browser&mockCollect=filter opens a YouTube search page with 48 links in the tray (the mock
+// answers the look-up for each: 42 with an uploader, a length and a date, 6 that fail), and
+// #view=browser&mockFilter=open|active|probing shows the tray's filter on it: "open" has the
+// popover open with a filter (newest first, 1-10 min, NASA and JAXA, from 2026-11-01) applied,
+// "active" the same filter with the popover closed (the chips under the head), and "probing" the
+// look-up held at 12 of the 48 items, with no filter. With any of them the look-up has been asked
+// for, as if the popover had been opened. Without #mockFilter the look-up starts when the popover
+// is first opened, and the mock answers one item in about 100 ms, three at a time.
 // #view=browser&mockSaved=1 seeds three saved pages: the "saved pages" list above the sites on the
 // start page, and, with #mockUrl=<the URL of one of them> (through encodeURIComponent), the toolbar's
 // filled star. List
@@ -42,7 +50,12 @@ export interface DebugHashState {
   /** Mock backend only: open the comments conflict dialog in Saved videos. */
   commentsConflict?: boolean;
   /** Mock backend only: open a page and start collecting links or page images. */
-  mockCollect?: "links" | "images" | "played";
+  mockCollect?: "links" | "images" | "played" | "filter";
+  /**
+   * Mock backend only: the tray's filter on the 48-link search page (see the list at the top of this
+   * file); opens that page unless #mockCollect names another.
+   */
+  mockFilter?: "open" | "active" | "probing";
   /**
    * Mock backend only: open the links page and its tray in this auto-scroll state, which
    * stays as it is until a button changes it ("running" never ends by itself).
@@ -167,6 +180,9 @@ export function readDebugHash(): DebugHashState {
   if (mockCollect === "1") state.mockCollect = "links";
   else if (mockCollect === "images") state.mockCollect = "images";
   else if (mockCollect === "played") state.mockCollect = "played";
+  else if (mockCollect === "filter") state.mockCollect = "filter";
+  const mockFilter = params.get("mockFilter");
+  if (mockFilter === "open" || mockFilter === "active" || mockFilter === "probing") state.mockFilter = mockFilter;
   const mockScroll = params.get("mockScroll");
   if (mockScroll === "running" || mockScroll === "end" || mockScroll === "stopped" || mockScroll === "cap") {
     state.mockScroll = mockScroll;
