@@ -260,7 +260,8 @@ impl YtDlpExecutor {
         let mut probe = match self.probe(&job, &options, attempt.path()).await {
             Ok(probe) => probe,
             Err(error)
-                if error.category == ErrorCategory::NoVideo && self.config.gallery_dl.is_some() =>
+                if self.config.gallery_dl.is_some()
+                    && tries_gallery_dl(&error, comments_only, &options) =>
             {
                 return self
                     .execute_gallery(&job, &options, attempt.path(), error)
@@ -820,11 +821,22 @@ impl YtDlpExecutor {
         job: &JobContext,
         options: &JobOptions,
         cwd: &Path,
-        no_video_failure: JobFailure,
+        probe_failure: JobFailure,
     ) -> Result<JobOutcome, JobFailure> {
-        let post = self.gallery_probe(job, options, cwd).await?;
+        let post = match self.gallery_probe(job, options, cwd).await {
+            Ok(post) => post,
+            // A URL yt-dlp does not support goes on to the page search when gallery-dl
+            // cannot read it either; only a cancellation is reported instead.
+            Err(_)
+                if probe_failure.category == ErrorCategory::UnsupportedUrl
+                    && !job.cancel.is_cancelled() =>
+            {
+                return Err(probe_failure);
+            }
+            Err(error) => return Err(error),
+        };
         if post.files.is_empty() {
-            return Err(no_video_failure);
+            return Err(probe_failure);
         }
 
         let site_name = options
@@ -1746,6 +1758,17 @@ fn failure(message: impl Into<String>) -> JobFailure {
     JobFailure {
         category: ErrorCategory::Unknown,
         message: message.into(),
+    }
+}
+
+/// Whether yt-dlp's probe failure sends the job to gallery-dl. `NoVideo` always does. An
+/// `UnsupportedUrl` does only for a plain download of a page, not for a comments-only job
+/// or for media the page search already found.
+fn tries_gallery_dl(error: &JobFailure, comments_only: bool, options: &JobOptions) -> bool {
+    match error.category {
+        ErrorCategory::NoVideo => true,
+        ErrorCategory::UnsupportedUrl => !comments_only && options.page_media.is_none(),
+        _ => false,
     }
 }
 

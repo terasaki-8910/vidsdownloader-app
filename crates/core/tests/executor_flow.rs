@@ -38,6 +38,7 @@ const LOGIN_STDERR: &str = include_str!("fixtures/ytdlp/error_niconico_members_o
 const NICONICO_COMMENTS: &[u8] =
     include_bytes!("fixtures/comments/niconico_sm9_comments_sample.json");
 const GALLERY_FIXTURE: &str = include_str!("fixtures/gallery-dl/x-two-photos.json");
+const UNSUPPORTED_URL: &str = "https://example.test/image-post";
 
 /// Entry point used when a child copy of this test binary acts as yt-dlp.
 #[test]
@@ -70,10 +71,7 @@ fn fake_ytdlp() {
     } else if is_comments {
         fake_comments(&mode, &args);
     } else if is_gallery_metadata {
-        assert_eq!(mode, "gallery");
-        print!("{GALLERY_FIXTURE}");
-        io::stdout().flush().unwrap();
-        std::process::exit(0);
+        fake_gallery_metadata(&mode);
     } else {
         fake_gallery_download(&mode, &args);
     }
@@ -97,6 +95,11 @@ fn fake_probe(mode: &str, args: &[OsString]) -> ! {
         }
         "gallery" => {
             eprintln!("ERROR: [Twitter] No video could be found in this tweet");
+            io::stderr().flush().unwrap();
+            std::process::exit(1);
+        }
+        mode if is_unsupported_mode(mode) => {
+            eprintln!("ERROR: Unsupported URL: {UNSUPPORTED_URL}");
             io::stderr().flush().unwrap();
             std::process::exit(1);
         }
@@ -250,8 +253,54 @@ fn fake_comments(mode: &str, args: &[OsString]) -> ! {
     std::process::exit(0);
 }
 
+/// The modes where yt-dlp does not support the URL: `unsupported` has no gallery-dl, the
+/// others differ in what gallery-dl does with the same URL.
+fn is_unsupported_mode(mode: &str) -> bool {
+    mode == "unsupported" || mode.starts_with("unsupported-gallery")
+}
+
+/// The modes where the executor is given a gallery-dl (the fake is this same binary).
+fn uses_gallery_dl(mode: &str) -> bool {
+    mode == "gallery" || mode.starts_with("unsupported-gallery")
+}
+
+/// What the fake gallery-dl prints for `-j`: the post's metadata, an empty list, a hang, or
+/// one error line with a non-zero exit.
+fn fake_gallery_metadata(mode: &str) -> ! {
+    let (error_line, code) = match mode {
+        "gallery" | "unsupported-gallery" => {
+            print!("{GALLERY_FIXTURE}");
+            ("", 0)
+        }
+        "unsupported-gallery-empty" => {
+            println!("[]");
+            ("", 0)
+        }
+        "unsupported-gallery-cancel" => {
+            if let Some(path) = std::env::var_os(PID_ENV) {
+                fs::write(path, std::process::id().to_string()).unwrap();
+            }
+            std::thread::sleep(Duration::from_secs(60));
+            ("", 0)
+        }
+        "unsupported-gallery-unsupported" => (
+            "[gallery-dl][error] Unsupported URL 'https://example.test/image-post'",
+            64,
+        ),
+        "unsupported-gallery-404" => ("[twitter][error] NotFoundError: HTTP 404 Not Found", 4),
+        "unsupported-gallery-auth" => ("[pixiv][error] AuthorizationError: HTTP 403 Forbidden", 16),
+        other => panic!("unknown fake gallery-dl mode {other}"),
+    };
+    if !error_line.is_empty() {
+        eprintln!("{error_line}");
+    }
+    io::stdout().flush().unwrap();
+    io::stderr().flush().unwrap();
+    std::process::exit(code);
+}
+
 fn fake_gallery_download(mode: &str, args: &[OsString]) -> ! {
-    assert_eq!(mode, "gallery");
+    assert!(matches!(mode, "gallery" | "unsupported-gallery"));
     let folder = argument_value(args, "-D").expect("gallery destination");
     let template = argument_value(args, "-f")
         .expect("gallery filename template")
@@ -452,11 +501,11 @@ impl Harness {
             } else {
                 TargetOs::MacOs
             },
-            gallery_dl: (mode == "gallery").then(|| PathBuf::from("managed-gallery-dl")),
+            gallery_dl: uses_gallery_dl(mode).then(|| PathBuf::from("managed-gallery-dl")),
         };
         let executor = YtDlpExecutor::new(config, Arc::clone(&self.store))
             .with_program_override_env(current_exe(), helper_args(), extra_env.clone());
-        if mode == "gallery" {
+        if uses_gallery_dl(mode) {
             executor.with_gallery_dl_program_override_env(current_exe(), helper_args(), extra_env)
         } else {
             executor
@@ -793,6 +842,146 @@ async fn no_video_falls_back_to_gallery_dl_and_records_each_image() {
     assert!(items.iter().all(|item| item.path.ends_with(".jpg")));
     assert!(items.iter().any(|item| item.path.ends_with(" 1.jpg")));
     assert!(items.iter().any(|item| item.path.ends_with(" 2.jpg")));
+    assert!(!harness.attempt_path(id).exists());
+}
+
+#[tokio::test]
+async fn unsupported_url_tries_gallery_dl_and_records_each_image() {
+    let harness = Harness::new();
+    let (queue, record) = harness.recording_queue("unsupported-gallery");
+    let events = queue.subscribe();
+    let id = queue.enqueue(UNSUPPORTED_URL, harness.options(false, None));
+    let done = finished(events, id).await;
+
+    assert_eq!(done.state, JobState::Done, "{:#?}", done.outcome);
+    let outcome = done.outcome.unwrap().unwrap();
+    let output = outcome.output_path.expect("first image path");
+    assert!(output.ends_with(" [2020050253005918661] 1.jpg"));
+    assert_eq!(
+        in_progress_states(&done.events, id),
+        [JobState::Probing, JobState::Ready, JobState::Downloading]
+    );
+    assert_eq!(
+        fs::read_to_string(record).unwrap(),
+        "probe
+gallery-metadata
+gallery-download
+"
+    );
+    let store = harness.store.lock().unwrap();
+    let items = store.search_library(&library_query()).unwrap();
+    assert_eq!(items.len(), 2);
+    assert!(
+        items
+            .iter()
+            .all(|item| item.site.as_deref() == Some("twitter")
+                && item.video_id.as_deref() == Some("2020050253005918661")
+                && item.path.ends_with(".jpg"))
+    );
+    assert!(items.iter().any(|item| item.path.ends_with(" 1.jpg")));
+    assert!(items.iter().any(|item| item.path.ends_with(" 2.jpg")));
+    assert!(!harness.attempt_path(id).exists());
+}
+
+/// Runs a job for a URL yt-dlp does not support and returns its failure and the fake
+/// programs that ran, one per line.
+async fn unsupported_failure(mode: &str) -> (JobFailure, String) {
+    let harness = Harness::new();
+    let (queue, record) = harness.recording_queue(mode);
+    let events = queue.subscribe();
+    let id = queue.enqueue(UNSUPPORTED_URL, harness.options(false, None));
+    let done = finished(events, id).await;
+
+    assert_eq!(done.state, JobState::Failed, "{mode}: {:#?}", done.outcome);
+    assert_eq!(harness.library_len(), 0, "{mode}");
+    assert!(!harness.attempt_path(id).exists(), "{mode}");
+    let error = done.outcome.unwrap().unwrap_err();
+    (error, fs::read_to_string(record).unwrap())
+}
+
+fn yt_dlp_unsupported_failure() -> JobFailure {
+    JobFailure {
+        category: ErrorCategory::UnsupportedUrl,
+        message: format!("Unsupported URL: {UNSUPPORTED_URL}"),
+    }
+}
+
+#[tokio::test]
+async fn unsupported_url_without_gallery_dl_is_unchanged() {
+    let (error, invocations) = unsupported_failure("unsupported").await;
+
+    assert_eq!(error, yt_dlp_unsupported_failure());
+    assert_eq!(
+        invocations,
+        "probe
+"
+    );
+}
+
+#[tokio::test]
+async fn unsupported_url_gallery_dl_cannot_read_keeps_yt_dlps_failure() {
+    let (error, invocations) = unsupported_failure("unsupported-gallery-unsupported").await;
+
+    assert_eq!(error, yt_dlp_unsupported_failure());
+    assert_eq!(
+        invocations,
+        "probe
+gallery-metadata
+"
+    );
+}
+
+#[tokio::test]
+async fn unsupported_url_gallery_dl_failing_another_way_keeps_yt_dlps_failure() {
+    for mode in [
+        "unsupported-gallery-404",
+        "unsupported-gallery-auth",
+        "unsupported-gallery-empty",
+    ] {
+        let (error, invocations) = unsupported_failure(mode).await;
+
+        assert_eq!(error, yt_dlp_unsupported_failure(), "{mode}");
+        assert_eq!(
+            invocations,
+            "probe
+gallery-metadata
+",
+            "{mode}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn cancelling_an_unsupported_url_during_the_gallery_dl_run_ends_it() {
+    let harness = Harness::new();
+    let pid_path = harness.temp.path().join("gallery.pid");
+    let queue = harness.queue_with_env(
+        "unsupported-gallery-cancel",
+        vec![(PID_ENV.into(), pid_path.as_os_str().to_owned())],
+    );
+    let events = queue.subscribe();
+    let id = queue.enqueue(UNSUPPORTED_URL, harness.options(false, None));
+    let pid: u32 = timeout(HANG, async {
+        loop {
+            if let Some(pid) = fs::read_to_string(&pid_path)
+                .ok()
+                .and_then(|text| text.parse().ok())
+            {
+                return pid;
+            }
+            sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .expect("gallery-dl starts");
+    let canceled_at = Instant::now();
+    queue.cancel(id).unwrap();
+    let done = finished(events, id).await;
+
+    assert_eq!(done.state, JobState::Canceled);
+    assert!(done.outcome.is_none());
+    assert!(canceled_at.elapsed() < Duration::from_secs(5));
+    assert_gone(pid).await;
     assert!(!harness.attempt_path(id).exists());
 }
 
